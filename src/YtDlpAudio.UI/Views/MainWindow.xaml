@@ -101,7 +101,7 @@
                 <TextBox Grid.Column="0" Text="{Binding InputText, UpdateSourceTrigger=PropertyChanged}" 
                          ToolTip="Paste YouTube/YT Music URL or type a song, artist, or playlist title"/>
 
-                <ComboBox Grid.Column="1" Margin="8,0" SelectedValue="{Binding SearchFilter}" Width="110"
+                <ComboBox Grid.Column="1" Margin="8,0" SelectedValuePath="Tag" SelectedValue="{Binding SearchFilter}" Width="110"
                           VerticalContentAlignment="Center" Background="#18181B" Foreground="#FAFAFA">
                     <ComboBoxItem Content="Tracks" Tag="{x:Static services:SearchFilterType.Tracks}" IsSelected="True" />
                     <ComboBoxItem Content="Playlists" Tag="{x:Static services:SearchFilterType.Playlists}" />
@@ -115,7 +115,7 @@
         <Border Grid.Row="2" Background="#202023" CornerRadius="8" Padding="12" Margin="0,0,0,10">
             <WrapPanel Orientation="Horizontal" VerticalAlignment="Center">
                 <TextBlock Text="Quality:" VerticalAlignment="Center" Margin="0,0,8,0" Foreground="#A1A1AA" />
-                <ComboBox Width="130" SelectedValue="{Binding QualityPreset}" Margin="0,0,18,0">
+                <ComboBox Width="130" SelectedValuePath="Tag" SelectedValue="{Binding QualityPreset}" Margin="0,0,18,0">
                     <ComboBoxItem Content="320k CBR (Max)" IsSelected="True" Tag="{x:Static models:AudioQualityPreset.Cbr320k}" />
                     <ComboBoxItem Content="VBR V0 (Optimal)" Tag="{x:Static models:AudioQualityPreset.VbrV0}" />
                     <ComboBoxItem Content="192k Standard" Tag="{x:Static models:AudioQualityPreset.Cbr192k}" />
@@ -126,7 +126,8 @@
                 <CheckBox Content="Clean YouTube Noise" IsChecked="{Binding CleanTitle}" Margin="0,0,14,0" Foreground="#E4E4E7" VerticalAlignment="Center" />
 
                 <TextBlock Text="Save To:" VerticalAlignment="Center" Margin="10,0,6,0" Foreground="#A1A1AA" />
-                <TextBox Text="{Binding OutputDirectory}" Width="250" FontSize="12" VerticalAlignment="Center" />
+                <TextBox Text="{Binding OutputDirectory}" Width="220" FontSize="12" VerticalAlignment="Center" />
+                <Button Content="Browse..." Command="{Binding BrowseOutputFolderCommand}" Margin="6,0,0,0" Padding="8,4" FontSize="12" Background="#374151" />
             </WrapPanel>
         </Border>
 
@@ -162,6 +163,13 @@
                           Background="#1E1E22" RowBackground="#232327" AlternatingRowBackground="#1A1A1D"
                           Foreground="#FAFAFA" GridLinesVisibility="None" HeadersVisibility="Column"
                           CanUserAddRows="False" Margin="0,8,0,0">
+                    <DataGrid.ContextMenu>
+                        <ContextMenu Background="#27272A" Foreground="#FAFAFA">
+                            <MenuItem Header="Expand Playlist to Tracks" 
+                                      Command="{Binding ExpandPlaylistCommand}"
+                                      CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=ContextMenu}, Path=PlacementTarget.SelectedItem}" />
+                        </ContextMenu>
+                    </DataGrid.ContextMenu>
                     <DataGrid.Columns>
                         <DataGridCheckBoxColumn Header="Sel" Binding="{Binding IsSelected}" Width="45" />
                         <DataGridTextColumn Header="Title" Binding="{Binding Title}" Width="*" IsReadOnly="True" />

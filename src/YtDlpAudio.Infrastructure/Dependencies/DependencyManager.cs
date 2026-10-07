@@ -18,6 +18,11 @@ public class DependencyManager : IDependencyManager
     public string FFmpegPath => Path.Combine(BinDirectory, "ffmpeg.exe");
     public string FFprobePath => Path.Combine(BinDirectory, "ffprobe.exe");
 
+    public DependencyManager(IAppPathsService appPaths, HttpClient? httpClient = null)
+        : this(appPaths.BinDirectory, httpClient)
+    {
+    }
+
     public DependencyManager(string? customBinDir = null, HttpClient? httpClient = null)
     {
         BinDirectory = customBinDir ?? Path.Combine(
@@ -174,12 +179,24 @@ public class DependencyManager : IDependencyManager
                 }
             }
 
-            progress?.Report(new ProvisioningProgress("Extracting ffmpeg.exe and ffprobe.exe...", 90, 0, null));
+            progress?.Report(new ProvisioningProgress("Inspecting FFmpeg archive...", 90, 0, null));
 
             using (var archive = ZipFile.OpenRead(tempZip))
             {
-                foreach (var entry in archive.Entries)
+                var targetEntries = archive.Entries
+                    .Where(e => e.Name.Equals("ffmpeg.exe", StringComparison.OrdinalIgnoreCase) ||
+                                e.Name.Equals("ffprobe.exe", StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+
+                int extractedCount = 0;
+                foreach (var entry in targetEntries)
                 {
+                    progress?.Report(new ProvisioningProgress(
+                        $"Extracting {entry.Name}...", 
+                        90.0 + ((double)extractedCount / Math.Max(1, targetEntries.Count) * 5.0), 
+                        0, 
+                        null));
+
                     if (entry.Name.Equals("ffmpeg.exe", StringComparison.OrdinalIgnoreCase))
                     {
                         entry.ExtractToFile(FFmpegPath, overwrite: true);
@@ -188,6 +205,8 @@ public class DependencyManager : IDependencyManager
                     {
                         entry.ExtractToFile(FFprobePath, overwrite: true);
                     }
+
+                    extractedCount++;
                 }
             }
         }

@@ -58,7 +58,19 @@ public class AudioDownloadService
             }
 
             string commandArgs = builder.Build(targetUrl);
-            return await _runner.ExecuteAsync(commandArgs, progress, ct);
+            var result = await _runner.ExecuteAsync(commandArgs, progress, ct);
+
+            if (!result.Success && ct.IsCancellationRequested)
+            {
+                CleanupPartialFiles(config.OutputDirectory);
+            }
+
+            return result;
+        }
+        catch (OperationCanceledException)
+        {
+            CleanupPartialFiles(config.OutputDirectory);
+            throw;
         }
         finally
         {
@@ -67,5 +79,29 @@ public class AudioDownloadService
                 try { File.Delete(tempCookiesPath); } catch { /* best effort cleanup */ }
             }
         }
+    }
+
+    private static void CleanupPartialFiles(string outputDirectory)
+    {
+        try
+        {
+            if (!Directory.Exists(outputDirectory)) return;
+
+            var dirInfo = new DirectoryInfo(outputDirectory);
+            var partialFiles = dirInfo.GetFiles("*.*", SearchOption.TopDirectoryOnly)
+                .Where(f => f.Extension.Equals(".part", StringComparison.OrdinalIgnoreCase) ||
+                            f.Extension.Equals(".ytdl", StringComparison.OrdinalIgnoreCase) ||
+                            f.Name.Contains(".temp.", StringComparison.OrdinalIgnoreCase));
+
+            foreach (var file in partialFiles)
+            {
+                try
+                {
+                    file.Delete();
+                }
+                catch { /* best effort */ }
+            }
+        }
+        catch { /* best effort directory scan */ }
     }
 }

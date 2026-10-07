@@ -9,6 +9,11 @@ public class WebView2AuthManager : IAuthManager
     private readonly string _authBaseDir;
     private AuthStatus? _cachedStatus;
 
+    public WebView2AuthManager(IAppPathsService appPaths)
+        : this(appPaths.AuthDirectory)
+    {
+    }
+
     public WebView2AuthManager(string? authBaseDir = null)
     {
         _authBaseDir = authBaseDir ?? Path.Combine(

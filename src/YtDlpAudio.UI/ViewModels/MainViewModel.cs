@@ -16,6 +16,7 @@ public partial class MainViewModel : ObservableObject
     private readonly ISearchService _searchService;
     private readonly IMetadataCleaner _cleaner;
     private readonly AudioDownloadService _downloadService;
+    private readonly ISettingsService _settingsService;
 
     private CancellationTokenSource? _downloadCts;
 
@@ -26,7 +27,7 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private AuthStatus _authStatus = new(false, false, null, null);
     [ObservableProperty] private DependencyStatus _dependencies = new(false, null, false, null);
     [ObservableProperty] private AudioQualityPreset _qualityPreset = AudioQualityPreset.Cbr320k;
-    [ObservableProperty] private string _outputDirectory;
+    [ObservableProperty] private string _outputDirectory = string.Empty;
     [ObservableProperty] private bool _embedAlbumArt = true;
     [ObservableProperty] private bool _embedMetadata = true;
     [ObservableProperty] private bool _cleanTitle = true;
@@ -44,7 +45,8 @@ public partial class MainViewModel : ObservableObject
         IYtDlpRunner runner,
         ISearchService searchService,
         IMetadataCleaner cleaner,
-        AudioDownloadService downloadService)
+        AudioDownloadService downloadService,
+        ISettingsService settingsService)
     {
         _dependencyManager = dependencyManager;
         _authManager = authManager;
@@ -52,18 +54,25 @@ public partial class MainViewModel : ObservableObject
         _searchService = searchService;
         _cleaner = cleaner;
         _downloadService = downloadService;
-
-        _outputDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyMusic), "YtDlpDownloads");
+        _settingsService = settingsService;
     }
 
     [RelayCommand]
     public async Task InitializeAsync()
     {
         IsBusy = true;
-        StatusMessage = "Checking environment dependencies...";
+        StatusMessage = "Checking environment dependencies and loading settings...";
 
         try
         {
+            var settings = await _settingsService.LoadSettingsAsync();
+            OutputDirectory = settings.OutputDirectory;
+            QualityPreset = settings.QualityPreset;
+            EmbedAlbumArt = settings.EmbedAlbumArt;
+            EmbedMetadata = settings.EmbedMetadata;
+            CleanTitle = settings.CleanTitle;
+            SearchFilter = settings.SearchFilter;
+
             Dependencies = await _dependencyManager.CheckStatusAsync();
             AuthStatus = await _authManager.GetCurrentAuthStatusAsync();
 
@@ -202,8 +211,91 @@ public partial class MainViewModel : ObservableObject
             ThumbnailUrl = thumbnail,
             Url = trackUrl,
             IsSelected = true,
-            State = DownloadState.Queued
+            State = DownloadState.Queued,
+            IsPlaylist = false
         });
+    }
+
+    [RelayCommand]
+    public async Task ExpandPlaylistAsync(TrackItemViewModel trackItem)
+    {
+        if (string.IsNullOrWhiteSpace(trackItem.Url)) return;
+
+        IsBusy = true;
+        StatusMessage = $"Expanding playlist '{trackItem.Title}'...";
+
+        try
+        {
+            int originalIndex = QueueTracks.IndexOf(trackItem);
+            QueueTracks.Remove(trackItem);
+
+            string? cookiesPath = null;
+            if (AuthStatus.IsLoggedIn)
+            {
+                cookiesPath = await _authManager.ExportCookiesToTempFileAsync();
+            }
+
+            try
+            {
+                var root = await _runner.QueryMetadataAsync(trackItem.Url, cookiesPath, isFlatPlaylist: true);
+                if (root.TryGetProperty("entries", out var entries) && entries.ValueKind == JsonValueKind.Array)
+                {
+                    int insertIndex = originalIndex >= 0 ? originalIndex : QueueTracks.Count;
+                    foreach (var entry in entries.EnumerateArray())
+                    {
+                        string id = entry.TryGetProperty("id", out var idProp) ? idProp.GetString() ?? "" : "";
+                        string rawTitle = entry.TryGetProperty("title", out var titleProp) ? titleProp.GetString() ?? "Unknown" : "Unknown";
+                        string rawArtist = entry.TryGetProperty("uploader", out var uploaderProp) ? uploaderProp.GetString() ?? "Unknown" : "Unknown";
+
+                        string title = CleanTitle ? _cleaner.CleanTitle(rawTitle) : rawTitle;
+                        string artist = CleanTitle ? _cleaner.CleanArtist(rawArtist) : rawArtist;
+
+                        TimeSpan? duration = null;
+                        if (entry.TryGetProperty("duration", out var durProp) && durProp.TryGetDouble(out double durSec))
+                        {
+                            duration = TimeSpan.FromSeconds(durSec);
+                        }
+
+                        string? thumbnail = null;
+                        if (entry.TryGetProperty("thumbnail", out var thumbProp))
+                        {
+                            thumbnail = thumbProp.GetString();
+                        }
+
+                        string trackUrl = !string.IsNullOrEmpty(id) ? $"https://www.youtube.com/watch?v={id}" : trackItem.Url;
+
+                        QueueTracks.Insert(insertIndex++, new TrackItemViewModel
+                        {
+                            Id = id,
+                            Title = title,
+                            Artist = artist,
+                            Duration = duration,
+                            ThumbnailUrl = thumbnail,
+                            Url = trackUrl,
+                            IsSelected = true,
+                            State = DownloadState.Queued,
+                            IsPlaylist = false
+                        });
+                    }
+                    StatusMessage = $"Expanded playlist into individual tracks.";
+                }
+            }
+            finally
+            {
+                if (cookiesPath != null && File.Exists(cookiesPath))
+                {
+                    try { File.Delete(cookiesPath); } catch { /* ignore */ }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Failed to expand playlist: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
     }
 
     [RelayCommand]
@@ -356,6 +448,36 @@ public partial class MainViewModel : ObservableObject
         await _authManager.ClearSessionAsync();
         AuthStatus = await _authManager.GetCurrentAuthStatusAsync();
         StatusMessage = "Signed out. Switched to Guest Mode.";
+    }
+
+    [RelayCommand]
+    public async Task SaveCurrentSettingsAsync()
+    {
+        var settings = new UserSettings(
+            OutputDirectory: OutputDirectory,
+            QualityPreset: QualityPreset,
+            EmbedAlbumArt: EmbedAlbumArt,
+            EmbedMetadata: EmbedMetadata,
+            CleanTitle: CleanTitle,
+            SearchFilter: SearchFilter
+        );
+        await _settingsService.SaveSettingsAsync(settings);
+    }
+
+    [RelayCommand]
+    public async Task BrowseOutputFolderAsync()
+    {
+        var dialog = new Microsoft.Win32.OpenFolderDialog
+        {
+            Title = "Select Destination Folder for Audio Files",
+            InitialDirectory = Directory.Exists(OutputDirectory) ? OutputDirectory : Environment.GetFolderPath(Environment.SpecialFolder.MyMusic)
+        };
+
+        if (dialog.ShowDialog() == true)
+        {
+            OutputDirectory = dialog.FolderName;
+            await SaveCurrentSettingsAsync();
+        }
     }
 
     private static bool IsUrl(string text)

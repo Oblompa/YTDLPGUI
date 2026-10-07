@@ -17,8 +17,9 @@ public partial class TrackItemViewModel : ObservableObject
     [ObservableProperty] private string _speed = string.Empty;
     [ObservableProperty] private string _eta = string.Empty;
     [ObservableProperty] private string? _errorMessage;
+    [ObservableProperty] private bool _isPlaylist;
 
-    public string DurationFormatted => Duration.HasValue 
+    public string DurationFormatted => Duration.HasValue
         ? Duration.Value.ToString(Duration.Value.TotalHours >= 1 ? @"hh\:mm\:ss" : @"mm\:ss")
         : "--:--";
 }
