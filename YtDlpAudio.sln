@@ -1,0 +1,39 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "YtDlpAudio.Core", "src\YtDlpAudio.Core\YtDlpAudio.Core.csproj", "{558FAEFE-E88E-4878-8542-9EAF6E580E8C}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "YtDlpAudio.Infrastructure", "src\YtDlpAudio.Infrastructure\YtDlpAudio.Infrastructure.csproj", "{1DD9B68A-529A-4D21-8C43-03DB57715FC8}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "YtDlpAudio.UI", "src\YtDlpAudio.UI\YtDlpAudio.UI.csproj", "{1152BDB3-3E52-4A2E-913E-8E90D92C3E41}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "YtDlpAudio.Core.Tests", "tests\YtDlpAudio.Core.Tests\YtDlpAudio.Core.Tests.csproj", "{1A580DE9-B1D4-46C9-B89F-75CFDE0EBFB7}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{558FAEFE-E88E-4878-8542-9EAF6E580E8C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{558FAEFE-E88E-4878-8542-9EAF6E580E8C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{558FAEFE-E88E-4878-8542-9EAF6E580E8C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{558FAEFE-E88E-4878-8542-9EAF6E580E8C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1DD9B68A-529A-4D21-8C43-03DB57715FC8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1DD9B68A-529A-4D21-8C43-03DB57715FC8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1DD9B68A-529A-4D21-8C43-03DB57715FC8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1DD9B68A-529A-4D21-8C43-03DB57715FC8}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1152BDB3-3E52-4A2E-913E-8E90D92C3E41}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1152BDB3-3E52-4A2E-913E-8E90D92C3E41}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1152BDB3-3E52-4A2E-913E-8E90D92C3E41}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1152BDB3-3E52-4A2E-913E-8E90D92C3E41}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1A580DE9-B1D4-46C9-B89F-75CFDE0EBFB7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1A580DE9-B1D4-46C9-B89F-75CFDE0EBFB7}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1A580DE9-B1D4-46C9-B89F-75CFDE0EBFB7}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1A580DE9-B1D4-46C9-B89F-75CFDE0EBFB7}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
