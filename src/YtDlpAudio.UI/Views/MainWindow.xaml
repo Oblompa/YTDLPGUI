@@ -14,6 +14,8 @@
         Background="#F3F4F6" Foreground="#1F2937">
 
     <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+
         <Style TargetType="ComboBox">
             <Setter Property="Background" Value="White" />
             <Setter Property="Foreground" Value="#1F2937" />
@@ -224,34 +226,33 @@
                     </DataGrid.RowDetailsTemplate>
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="Type" Binding="{Binding TypeLabel}" Width="80" />
-                        <DataGridTextColumn Header="Title" Binding="{Binding Title}" Width="*" />
-                        <DataGridTextColumn Header="Artist / Channel" Binding="{Binding Author}" Width="200" />
-                        <DataGridTextColumn Header="Duration / Tracks" Binding="{Binding DurationOrCountFormatted}" Width="120" />
-                        <DataGridTemplateColumn Header="Action" Width="190">
+                        <DataGridTemplateColumn Header="Title" Width="*">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
-                                    <StackPanel Orientation="Horizontal">
-                                        <Button AutomationProperties.AutomationId="QueueSearchResultButton"
-                                                Content="+ Queue" Padding="6,2" FontSize="12" Margin="0,0,4,0"
-                                                Command="{Binding DataContext.AddSearchResultToQueueCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                CommandParameter="{Binding}" Background="#059669" />
-                                        <Button Content="{Binding ExpandButtonLabel}" Padding="6,2" FontSize="12"
+                                    <DockPanel LastChildFill="True">
+                                        <Button DockPanel.Dock="Left"
+                                                Content="{Binding ExpandButtonGlyph}"
+                                                ToolTip="{Binding ExpandButtonLabel}"
+                                                Visibility="{Binding IsPlaylist, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                Width="24" Height="24" MinWidth="24" Padding="0"
+                                                Margin="0,0,6,0" FontSize="16" FontWeight="Bold"
                                                 Command="{Binding DataContext.ToggleSearchResultPlaylistExpansionCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                CommandParameter="{Binding}" Background="#2563EB">
-                                            <Button.Style>
-                                                <Style TargetType="{x:Type Button}">
-                                                    <Setter Property="Visibility" Value="Collapsed" />
-                                                    <Setter Property="Foreground" Value="#FFFFFF" />
-                                                    <Setter Property="FontWeight" Value="SemiBold" />
-                                                    <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding IsPlaylist}" Value="True">
-                                                            <Setter Property="Visibility" Value="Visible" />
-                                                        </DataTrigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </Button.Style>
-                                        </Button>
-                                    </StackPanel>
+                                                CommandParameter="{Binding}" />
+                                        <TextBlock Text="{Binding Title}" VerticalAlignment="Center"
+                                                   TextTrimming="CharacterEllipsis" />
+                                    </DockPanel>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                        <DataGridTextColumn Header="Artist / Channel" Binding="{Binding Author}" Width="200" />
+                        <DataGridTextColumn Header="Duration / Tracks" Binding="{Binding DurationOrCountFormatted}" Width="120" />
+                        <DataGridTemplateColumn Header="Action" Width="100">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <Button AutomationProperties.AutomationId="QueueSearchResultButton"
+                                            Content="+ Queue" Padding="6,2" FontSize="12"
+                                            Command="{Binding DataContext.AddSearchResultToQueueCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                            CommandParameter="{Binding}" Background="#059669" />
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>

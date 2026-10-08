@@ -19,6 +19,7 @@ public partial class SearchResultItemViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ExpandButtonLabel))]
+    [NotifyPropertyChangedFor(nameof(ExpandButtonGlyph))]
     private bool _isPlaylistExpanded;
 
     [ObservableProperty] private bool _isLoadingPlaylistTracks;
@@ -26,6 +27,7 @@ public partial class SearchResultItemViewModel : ObservableObject
     [ObservableProperty] private string _playlistTracksStatus = string.Empty;
 
     public string ExpandButtonLabel => IsPlaylistExpanded ? "Hide tracks" : "Expand tracks";
+    public string ExpandButtonGlyph => IsPlaylistExpanded ? "-" : "+";
     public ObservableCollection<SearchResultItemViewModel> PlaylistTracks { get; } = new();
 
     public string TypeLabel => ResultType == SearchResultType.Playlist ? "Playlist" : "Track";
