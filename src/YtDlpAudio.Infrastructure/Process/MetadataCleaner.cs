@@ -7,6 +7,7 @@ public partial class MetadataCleaner : IMetadataCleaner
 {
     private static readonly Regex[] TitleNoiseRegexes = new[]
     {
+        new Regex(@"\s*[\(\[]\s*(?:official\s+)?(?:music\s+)?(?:lyric\s+)?(?:audio|video|visualizer|4k\s*(?:remaster|uhd)?|hd|clip\s+officiel|video\s+oficial|remaster(?:ed)?(?:\s+\d{4})?)\s*[\)\]]", RegexOptions.IgnoreCase | RegexOptions.Compiled),
         new Regex(@"\s*[\(\[]\s*official\s*(?:music\s*)?video\s*[\)\]]", RegexOptions.IgnoreCase | RegexOptions.Compiled),
         new Regex(@"\s*[\(\[]\s*official\s*audio\s*[\)\]]", RegexOptions.IgnoreCase | RegexOptions.Compiled),
         new Regex(@"\s*[\(\[]\s*lyric\s*video\s*[\)\]]", RegexOptions.IgnoreCase | RegexOptions.Compiled),

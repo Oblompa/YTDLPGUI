@@ -4,10 +4,12 @@ public record DependencyStatus(
     bool YtDlpInstalled,
     string? YtDlpVersion,
     bool FFmpegInstalled,
-    string? FFmpegVersion
+    string? FFmpegVersion,
+    bool DenoInstalled,
+    string? DenoVersion
 )
 {
-    public bool AllReady => YtDlpInstalled && FFmpegInstalled;
+    public bool AllReady => YtDlpInstalled && FFmpegInstalled && DenoInstalled;
 }
 
 public record ProvisioningProgress(
@@ -23,9 +25,11 @@ public interface IDependencyManager
     string YtDlpPath { get; }
     string FFmpegPath { get; }
     string FFprobePath { get; }
+    string DenoPath { get; }
 
     Task<DependencyStatus> CheckStatusAsync(CancellationToken ct = default);
     Task<bool> ProvisionAllAsync(IProgress<ProvisioningProgress>? progress = null, CancellationToken ct = default);
     Task<bool> UpdateYtDlpAsync(IProgress<ProvisioningProgress>? progress = null, CancellationToken ct = default);
+    Task<bool> EnsureDenoAsync(IProgress<ProvisioningProgress>? progress = null, CancellationToken ct = default);
     Task<string?> GetYtDlpVersionAsync(CancellationToken ct = default);
 }

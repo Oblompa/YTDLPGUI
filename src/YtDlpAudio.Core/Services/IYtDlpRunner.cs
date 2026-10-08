@@ -15,6 +15,7 @@ public interface IYtDlpRunner
         string url,
         string? cookiesFilePath = null,
         bool isFlatPlaylist = true,
-        CancellationToken ct = default
+        CancellationToken ct = default,
+        int? playlistEnd = null
     );
 }

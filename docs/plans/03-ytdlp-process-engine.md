@@ -167,3 +167,28 @@ public class YtDlpArgumentBuilder
   process.Kill(entireProcessTree: true);
   ```
 * Register the cancellation token to trigger `entireProcessTree: true` immediately, followed by cleaning up `.part` and `.temp.*` files.
+
+---
+
+## 6. Download Failure Diagnostics (Release Blocker)
+
+The user reports that every download fails while search and sign-in work. Treat this as a release blocker; investigate the actual failing stage instead of presuming the cause.
+
+**Capture and surface**:
+- yt-dlp exit code and stderr, including FFmpeg/postprocessor output needed to diagnose conversion and embedding failures.
+- The failed stage and a concise actionable message on the queue item; retain full sanitized diagnostic detail in the application log.
+- Relevant non-secret invocation context: yt-dlp and FFmpeg versions, output directory/writeability, selected format and audio arguments, and whether the command was guest or authenticated. Never log cookie contents, tokens, or credential-bearing values.
+- Whether a non-empty output file was produced. Exit code zero alone is not proof that the requested MP3 is present and valid.
+
+**Regression coverage**:
+- Simulate source-extraction, transfer, FFmpeg-conversion, and metadata/postprocessor failures; verify exit codes and stderr reach the user-facing result.
+- Verify successful execution yields the expected non-empty MP3 in the requested output directory.
+- Exercise public downloads without cookies and authenticated downloads with temporary cookie files while confirming cleanup/redaction.
+- Run a separately gated Windows E2E test against a source the tester is authorized to download; do not use copyrighted commercial music as a test fixture.
+
+## 7. Resilient Playlist Metadata
+
+- Metadata enumeration for a playlist uses yt-dlp's `--ignore-errors` so one unavailable entry does not discard the rest of the playlist response.
+- Parse only entries with a usable video ID and title; skip unavailable, malformed, and empty entries.
+- If playlist inspection fails, preserve the playlist queue row and surface the error so the user can retry or remove it.
+- Playlist metadata enumeration must be lazy: search results contain playlist summaries only, and only an explicitly expanded/queued playlist is inspected.

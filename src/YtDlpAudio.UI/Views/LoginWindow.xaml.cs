@@ -49,7 +49,7 @@ public partial class LoginWindow : Window
                 Name: c.Name,
                 Value: c.Value,
                 Path: c.Path,
-                Expires: c.Expires,
+                Expires: c.Expires == default ? null : new DateTimeOffset(c.Expires).ToUnixTimeSeconds(),
                 IsSecure: c.IsSecure,
                 IsHttpOnly: c.IsHttpOnly
             ));

@@ -102,3 +102,24 @@ To display the Premium status badge in the UI:
 1. **HTTP Probe:** Make an authenticated GET request to `https://www.youtube.com/paid_memberships` using the extracted cookie container.
 2. **Payload Check:** Inspect the response HTML for the string `"YouTube Premium"` or `"membership_type":"PREMIUM"`.
 3. **Format Probe (Fallback):** Run `yt-dlp` with `--dump-single-json` on a known YouTube Music track and check if format `141` (256kbps AAC) is listed in the formats array.
+
+---
+
+## 6. Browse the Signed-In Account's Playlist Library
+
+**Requirement**: After sign-in, let the user browse playlists visible to that YouTube/YouTube Music account, including private or saved playlists supported by the installed yt-dlp version. Sign-in remains optional for public search and downloads.
+
+**Plan**:
+1. Keep YouTube and YouTube Music library browsing as separate user-selectable flows; do not merge or deduplicate their results.
+2. Use yt-dlp's authenticated `https://www.youtube.com/feed/playlists` enumeration for YouTube. For YouTube Music, use its authenticated `FEmusic_liked_playlists` browse endpoint because yt-dlp does not enumerate the Music library URL directly.
+3. Reuse the existing protected cookie export only for the duration of a request. The Music request requires `__Secure-3PAPISID` for its SAPISIDHASH authorization; never persist or log the generated authorization header, cookie values, or private playlist data.
+4. Parse both sources into the existing playlist result model and pass the selected result's URL into the existing playlist inspection/queue workflow.
+5. Give each source its own refresh, loading, empty, and actionable expired-session/access-denied states. A failure in one source must not prevent browsing the other; sign-in remains optional for public workflows.
+6. Do not infer Premium status as a prerequisite for ordinary account-library access.
+
+**Acceptance criteria**:
+- A signed-in user can independently refresh and browse YouTube playlists and YouTube Music library playlists.
+- Results remain in their selected source view; duplicate playlists are not merged across the two sources.
+- Selecting a result opens its entries in the existing queue workflow.
+- Guest users retain public search and receive a clear sign-in prompt only when they request the account library.
+- Authentication errors are visible and actionable for the selected source; credentials are never logged.

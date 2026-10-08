@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO.Compression;
+using System.Net.Http;
 using System.Security.Cryptography;
 using YtDlpAudio.Core.Services;
 
@@ -10,6 +11,8 @@ public class DependencyManager : IDependencyManager
     private const string YtDlpDownloadUrl = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe";
     private const string YtDlpChecksumUrl = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/SHA2-256SUMS";
     private const string FFmpegDownloadUrl = "https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip";
+    private const string DenoDownloadUrl = "https://github.com/denoland/deno/releases/latest/download/deno-x86_64-pc-windows-msvc.zip";
+    private static readonly Version MinimumDenoVersion = new(2, 3, 0);
 
     private readonly HttpClient _httpClient;
 
@@ -17,6 +20,7 @@ public class DependencyManager : IDependencyManager
     public string YtDlpPath => Path.Combine(BinDirectory, "yt-dlp.exe");
     public string FFmpegPath => Path.Combine(BinDirectory, "ffmpeg.exe");
     public string FFprobePath => Path.Combine(BinDirectory, "ffprobe.exe");
+    public string DenoPath => Path.Combine(BinDirectory, "deno.exe");
 
     public DependencyManager(IAppPathsService appPaths, HttpClient? httpClient = null)
         : this(appPaths.BinDirectory, httpClient)
@@ -37,6 +41,8 @@ public class DependencyManager : IDependencyManager
     {
         bool ytDlpExists = File.Exists(YtDlpPath);
         bool ffmpegExists = File.Exists(FFmpegPath);
+        string? denoVersion = await GetDenoVersionAsync(ct);
+        bool denoExists = IsSupportedDenoVersion(denoVersion);
 
         string? ytDlpVersion = null;
         if (ytDlpExists)
@@ -58,7 +64,7 @@ public class DependencyManager : IDependencyManager
             }
         }
 
-        return new DependencyStatus(ytDlpExists, ytDlpVersion, ffmpegExists, ffmpegVersion);
+        return new DependencyStatus(ytDlpExists, ytDlpVersion, ffmpegExists, ffmpegVersion, denoExists, denoVersion);
     }
 
     public async Task<bool> ProvisionAllAsync(IProgress<ProvisioningProgress>? progress = null, CancellationToken ct = default)
@@ -69,8 +75,11 @@ public class DependencyManager : IDependencyManager
         progress?.Report(new ProvisioningProgress("Downloading yt-dlp...", 0, 0, null));
         await DownloadYtDlpInternalAsync(progress, ct);
 
-        // 2. Download & Extract FFmpeg
-        progress?.Report(new ProvisioningProgress("Downloading FFmpeg package...", 50, 0, null));
+        // 2. Install Deno for YouTube JavaScript challenge solving
+        await EnsureDenoAsync(progress, ct);
+
+        // 3. Download & Extract FFmpeg
+        progress?.Report(new ProvisioningProgress("Downloading FFmpeg package...", 55, 0, null));
         await DownloadAndExtractFFmpegInternalAsync(progress, ct);
 
         progress?.Report(new ProvisioningProgress("Verifying installations...", 95, 0, null));
@@ -86,7 +95,48 @@ public class DependencyManager : IDependencyManager
         progress?.Report(new ProvisioningProgress("Checking yt-dlp updates...", 0, 0, null));
         await DownloadYtDlpInternalAsync(progress, ct);
         string? version = await GetYtDlpVersionAsync(ct);
-        return !string.IsNullOrWhiteSpace(version);
+        bool denoReady = await EnsureDenoAsync(progress, ct);
+        return !string.IsNullOrWhiteSpace(version) && denoReady;
+    }
+
+    public async Task<bool> EnsureDenoAsync(
+        IProgress<ProvisioningProgress>? progress = null,
+        CancellationToken ct = default)
+    {
+        Directory.CreateDirectory(BinDirectory);
+        string? version = await GetDenoVersionAsync(ct);
+        if (IsSupportedDenoVersion(version))
+        {
+            return true;
+        }
+
+        progress?.Report(new ProvisioningProgress("Downloading Deno JavaScript runtime...", 45, 0, null));
+        await DownloadAndExtractDenoInternalAsync(progress, ct);
+        version = await GetDenoVersionAsync(ct);
+        return IsSupportedDenoVersion(version);
+    }
+
+    private async Task<string?> GetDenoVersionAsync(CancellationToken ct)
+    {
+        if (!File.Exists(DenoPath))
+        {
+            return null;
+        }
+
+        return await ExecuteVersionCommandAsync(DenoPath, "--version", ct);
+    }
+
+    private static bool IsSupportedDenoVersion(string? versionText)
+    {
+        if (string.IsNullOrWhiteSpace(versionText))
+        {
+            return false;
+        }
+
+        var match = System.Text.RegularExpressions.Regex.Match(versionText, @"\d+\.\d+\.\d+");
+        return match.Success &&
+               Version.TryParse(match.Value, out var version) &&
+               version >= MinimumDenoVersion;
     }
 
     public async Task<string?> GetYtDlpVersionAsync(CancellationToken ct = default)
@@ -177,6 +227,7 @@ public class DependencyManager : IDependencyManager
 
                     progress?.Report(new ProvisioningProgress("Downloading FFmpeg archive", percent, totalRead, totalBytes));
                 }
+
             }
 
             progress?.Report(new ProvisioningProgress("Inspecting FFmpeg archive...", 90, 0, null));
@@ -219,6 +270,86 @@ public class DependencyManager : IDependencyManager
         }
     }
 
+    private async Task DownloadAndExtractDenoInternalAsync(
+        IProgress<ProvisioningProgress>? progress,
+        CancellationToken ct)
+    {
+        string tempZip = Path.Combine(BinDirectory, "deno-download.zip.tmp");
+        string tempDeno = Path.Combine(BinDirectory, "deno.exe.tmp");
+
+        try
+        {
+            using (var response = await _httpClient.GetAsync(
+                       DenoDownloadUrl,
+                       HttpCompletionOption.ResponseHeadersRead,
+                       ct))
+            {
+                response.EnsureSuccessStatusCode();
+                long? totalBytes = response.Content.Headers.ContentLength;
+
+                await using var sourceStream = await response.Content.ReadAsStreamAsync(ct);
+                await using var fileStream = new FileStream(
+                    tempZip,
+                    FileMode.Create,
+                    FileAccess.Write,
+                    FileShare.None,
+                    81920,
+                    useAsync: true);
+
+                var buffer = new byte[81920];
+                long totalRead = 0;
+                int bytesRead;
+                while ((bytesRead = await sourceStream.ReadAsync(buffer, ct)) > 0)
+                {
+                    await fileStream.WriteAsync(buffer.AsMemory(0, bytesRead), ct);
+                    totalRead += bytesRead;
+                    double percent = totalBytes is > 0
+                        ? 45.0 + ((double)totalRead / totalBytes.Value * 5.0)
+                        : 47.5;
+                    progress?.Report(new ProvisioningProgress(
+                        "Downloading Deno JavaScript runtime",
+                        percent,
+                        totalRead,
+                        totalBytes));
+                }
+            }
+
+            using (var archive = ZipFile.OpenRead(tempZip))
+            {
+                var denoEntry = archive.Entries.FirstOrDefault(entry =>
+                    entry.Name.Equals("deno.exe", StringComparison.OrdinalIgnoreCase));
+                if (denoEntry is null)
+                {
+                    throw new InvalidDataException("The Deno release archive did not contain deno.exe.");
+                }
+
+                await using var entryStream = denoEntry.Open();
+                await using var denoStream = new FileStream(
+                    tempDeno,
+                    FileMode.Create,
+                    FileAccess.Write,
+                    FileShare.None,
+                    81920,
+                    useAsync: true);
+                await entryStream.CopyToAsync(denoStream, ct);
+            }
+
+            File.Move(tempDeno, DenoPath, overwrite: true);
+        }
+        finally
+        {
+            if (File.Exists(tempZip))
+            {
+                try { File.Delete(tempZip); } catch { /* best effort cleanup */ }
+            }
+
+            if (File.Exists(tempDeno))
+            {
+                try { File.Delete(tempDeno); } catch { /* best effort cleanup */ }
+            }
+        }
+    }
+
     private static async Task<string?> ExecuteVersionCommandAsync(string executablePath, string argument, CancellationToken ct)
     {
         try
@@ -233,7 +364,7 @@ public class DependencyManager : IDependencyManager
                 CreateNoWindow = true
             };
 
-            using var process = new Process { StartInfo = psi };
+            using var process = new System.Diagnostics.Process { StartInfo = psi };
             process.Start();
 
             string output = await process.StandardOutput.ReadToEndAsync(ct);

@@ -5,7 +5,15 @@
         Title="Sign In to YouTube"
         Height="720" Width="880"
         WindowStartupLocation="CenterOwner"
-        Background="#18181B">
+        Background="#F3F4F6" Foreground="#1F2937">
+    <Window.Resources>
+        <Style TargetType="Button">
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Padding" Value="12,7" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+    </Window.Resources>
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -13,21 +21,21 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <Border Grid.Row="0" Background="#27272A" Padding="14">
+        <Border Grid.Row="0" Background="#E9EEF5" Padding="14">
             <StackPanel Orientation="Horizontal">
                 <TextBlock Text="Sign in to your YouTube / Google account to access your personal library playlists and YouTube Premium audio streams." 
-                           Foreground="#D1D5DB" FontSize="13" TextWrapping="Wrap" />
+                           Foreground="#374151" FontSize="13" TextWrapping="Wrap" />
             </StackPanel>
         </Border>
 
         <wv2:WebView2 Grid.Row="1" Name="AuthWebView" />
 
-        <Border Grid.Row="2" Background="#27272A" Padding="12">
+        <Border Grid.Row="2" Background="#E9EEF5" Padding="12">
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                 <Button Content="Save Session &amp; Return" Click="OnSaveSessionClicked" 
-                        Background="#10B981" Foreground="White" FontWeight="SemiBold" Padding="14,8" Margin="0,0,8,0" />
+                        Background="#059669" Foreground="White" FontWeight="SemiBold" Padding="14,8" Margin="0,0,8,0" />
                 <Button Content="Cancel" Click="OnCancelClicked" 
-                        Background="#4B5563" Foreground="White" Padding="12,8" />
+                        Background="#E2E8F0" Foreground="#1F2937" Padding="12,8" />
             </StackPanel>
         </Border>
     </Grid>

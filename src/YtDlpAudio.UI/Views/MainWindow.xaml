@@ -11,25 +11,67 @@
         Height="760" Width="1020"
         MinHeight="600" MinWidth="800"
         WindowStartupLocation="CenterScreen"
-        Background="#18181B" Foreground="#F4F4F5">
+        Background="#F3F4F6" Foreground="#1F2937">
 
     <Window.Resources>
-        <!-- Style overrides for clean modern dark appearance -->
+        <Style TargetType="ComboBox">
+            <Setter Property="Background" Value="White" />
+            <Setter Property="Foreground" Value="#1F2937" />
+            <Setter Property="BorderBrush" Value="#CBD5E1" />
+            <Setter Property="Padding" Value="6,4" />
+        </Style>
+
+        <Style TargetType="ComboBoxItem">
+            <Setter Property="Foreground" Value="#1F2937" />
+            <Setter Property="Padding" Value="8,5" />
+        </Style>
+
+        <Style TargetType="CheckBox">
+            <Setter Property="Foreground" Value="#374151" />
+        </Style>
+
+        <Style TargetType="DataGridColumnHeader">
+            <Setter Property="Background" Value="#E9EEF5" />
+            <Setter Property="Foreground" Value="#374151" />
+            <Setter Property="Padding" Value="8,7" />
+            <Setter Property="BorderBrush" Value="#D7DEE8" />
+        </Style>
+
+        <Style TargetType="DataGridCell">
+            <Setter Property="Foreground" Value="#1F2937" />
+            <Setter Property="Padding" Value="6,4" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+
+        <Style TargetType="TabItem">
+            <Setter Property="Foreground" Value="#374151" />
+            <Setter Property="Padding" Value="12,7" />
+        </Style>
+
         <Style TargetType="TextBox">
-            <Setter Property="Background" Value="#27272A" />
-            <Setter Property="Foreground" Value="#FAFAFA" />
-            <Setter Property="BorderBrush" Value="#3F3F46" />
+            <Setter Property="Background" Value="White" />
+            <Setter Property="Foreground" Value="#1F2937" />
+            <Setter Property="BorderBrush" Value="#CBD5E1" />
             <Setter Property="Padding" Value="8,6" />
             <Setter Property="FontSize" Value="14" />
         </Style>
 
         <Style TargetType="Button">
-            <Setter Property="Background" Value="#3B82F6" />
+            <Setter Property="Background" Value="#2563EB" />
             <Setter Property="Foreground" Value="#FFFFFF" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="Padding" Value="12,6" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Cursor" Value="Hand" />
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Opacity" Value="0.9" />
+                </Trigger>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Background" Value="#CBD5E1" />
+                    <Setter Property="Foreground" Value="#64748B" />
+                </Trigger>
+            </Style.Triggers>
         </Style>
     </Window.Resources>
 
@@ -43,16 +85,16 @@
         </Grid.RowDefinitions>
 
         <!-- TOP HEADER BAR -->
-        <Border Grid.Row="0" Padding="0,0,0,14" BorderBrush="#27272A" BorderThickness="0,0,0,1">
+        <Border Grid.Row="0" Padding="0,0,0,14" BorderBrush="#D7DEE8" BorderThickness="0,0,0,1">
             <Grid>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock Text="🎵 YtDlpAudio" FontSize="20" FontWeight="Bold" Foreground="#60A5FA" Margin="0,0,12,0"/>
-                    <TextBlock Text="Audio &amp; MP3 Studio" FontSize="13" Foreground="#A1A1AA" VerticalAlignment="Center" />
+                    <TextBlock Text="🎵 YtDlpAudio" FontSize="20" FontWeight="Bold" Foreground="#1D4ED8" Margin="0,0,12,0"/>
+                    <TextBlock Text="Audio &amp; MP3 Studio" FontSize="13" Foreground="#64748B" VerticalAlignment="Center" />
                 </StackPanel>
 
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
                     <!-- Auth State Badge -->
-                    <Border Background="#27272A" CornerRadius="12" Padding="10,4" Margin="0,0,10,0">
+                    <Border Background="#E9EEF5" CornerRadius="12" Padding="10,4" Margin="0,0,10,0">
                         <StackPanel Orientation="Horizontal">
                             <Ellipse Width="8" Height="8" Margin="0,0,6,0">
                                 <Ellipse.Style>
@@ -66,12 +108,12 @@
                                     </Style>
                                 </Ellipse.Style>
                             </Ellipse>
-                            <TextBlock Text="{Binding AuthStatus.DisplayMode}" FontSize="12" Foreground="#D1D5DB" />
+                            <TextBlock Text="{Binding AuthStatus.DisplayMode}" FontSize="12" Foreground="#374151" />
                         </StackPanel>
                     </Border>
 
                     <!-- Sign In / Out Button -->
-                    <Button Content="Sign In" Command="{Binding SignInCommand}" Margin="0,0,8,0" Background="#374151">
+                    <Button Content="Sign In" Command="{Binding SignInCommand}" Margin="0,0,8,0" Background="#E2E8F0" Foreground="#1F2937">
                         <Button.Style>
                             <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
                                 <Style.Triggers>
@@ -84,13 +126,14 @@
                         </Button.Style>
                     </Button>
 
-                    <Button Content="Setup Dependencies" Command="{Binding SetupDependenciesCommand}" Background="#2563EB" />
+                    <Button AutomationProperties.AutomationId="SetupDependenciesButton"
+                            Content="Setup Dependencies" Command="{Binding SetupDependenciesCommand}" Background="#2563EB" />
                 </StackPanel>
             </Grid>
         </Border>
 
         <!-- SEARCH & URL INPUT CARD -->
-        <Border Grid.Row="1" Background="#27272A" CornerRadius="8" Padding="14" Margin="0,14,0,10">
+        <Border Grid.Row="1" Background="White" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8" Padding="14" Margin="0,14,0,10">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
@@ -98,58 +141,117 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
-                <TextBox Grid.Column="0" Text="{Binding InputText, UpdateSourceTrigger=PropertyChanged}" 
+                <TextBox Grid.Column="0"
+                         AutomationProperties.AutomationId="SearchInput"
+                         Text="{Binding InputText, UpdateSourceTrigger=PropertyChanged}"
                          ToolTip="Paste YouTube/YT Music URL or type a song, artist, or playlist title"/>
 
-                <ComboBox Grid.Column="1" Margin="8,0" SelectedValuePath="Tag" SelectedValue="{Binding SearchFilter}" Width="110"
-                          VerticalContentAlignment="Center" Background="#18181B" Foreground="#FAFAFA">
+                <ComboBox Grid.Column="1" AutomationProperties.AutomationId="SearchFilter"
+                          Margin="8,0" SelectedValuePath="Tag" SelectedValue="{Binding SearchFilter}" Width="110"
+                          VerticalContentAlignment="Center">
                     <ComboBoxItem Content="Tracks" Tag="{x:Static services:SearchFilterType.Tracks}" IsSelected="True" />
                     <ComboBoxItem Content="Playlists" Tag="{x:Static services:SearchFilterType.Playlists}" />
                 </ComboBox>
 
-                <Button Grid.Column="2" Content="🔍 Search / Inspect" Command="{Binding SubmitInputCommand}" MinWidth="130" />
+                <Button Grid.Column="2" AutomationProperties.AutomationId="SearchSubmitButton"
+                        Content="🔍 Search / Inspect" Command="{Binding SubmitInputCommand}" MinWidth="130" />
             </Grid>
         </Border>
 
         <!-- AUDIO OPTIONS CARD -->
-        <Border Grid.Row="2" Background="#202023" CornerRadius="8" Padding="12" Margin="0,0,0,10">
+        <Border Grid.Row="2" Background="White" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,10">
             <WrapPanel Orientation="Horizontal" VerticalAlignment="Center">
-                <TextBlock Text="Quality:" VerticalAlignment="Center" Margin="0,0,8,0" Foreground="#A1A1AA" />
+                <TextBlock Text="Quality:" VerticalAlignment="Center" Margin="0,0,8,0" Foreground="#64748B" />
                 <ComboBox Width="130" SelectedValuePath="Tag" SelectedValue="{Binding QualityPreset}" Margin="0,0,18,0">
                     <ComboBoxItem Content="320k CBR (Max)" IsSelected="True" Tag="{x:Static models:AudioQualityPreset.Cbr320k}" />
                     <ComboBoxItem Content="VBR V0 (Optimal)" Tag="{x:Static models:AudioQualityPreset.VbrV0}" />
                     <ComboBoxItem Content="192k Standard" Tag="{x:Static models:AudioQualityPreset.Cbr192k}" />
                 </ComboBox>
 
-                <CheckBox Content="Embed Cover Art (JPG)" IsChecked="{Binding EmbedAlbumArt}" Margin="0,0,14,0" Foreground="#E4E4E7" VerticalAlignment="Center" />
-                <CheckBox Content="Embed ID3 Tags" IsChecked="{Binding EmbedMetadata}" Margin="0,0,14,0" Foreground="#E4E4E7" VerticalAlignment="Center" />
-                <CheckBox Content="Clean YouTube Noise" IsChecked="{Binding CleanTitle}" Margin="0,0,14,0" Foreground="#E4E4E7" VerticalAlignment="Center" />
+                <CheckBox Content="Embed Cover Art (JPG)" IsChecked="{Binding EmbedAlbumArt}" Margin="0,0,14,0" VerticalAlignment="Center" />
+                <CheckBox Content="Embed ID3 Tags" IsChecked="{Binding EmbedMetadata}" Margin="0,0,14,0" VerticalAlignment="Center" />
+                <CheckBox Content="Clean YouTube Noise" IsChecked="{Binding CleanTitle}" Margin="0,0,14,0" VerticalAlignment="Center" />
 
-                <TextBlock Text="Save To:" VerticalAlignment="Center" Margin="10,0,6,0" Foreground="#A1A1AA" />
-                <TextBox Text="{Binding OutputDirectory}" Width="220" FontSize="12" VerticalAlignment="Center" />
-                <Button Content="Browse..." Command="{Binding BrowseOutputFolderCommand}" Margin="6,0,0,0" Padding="8,4" FontSize="12" Background="#374151" />
+                <TextBlock Text="Save To:" VerticalAlignment="Center" Margin="10,0,6,0" Foreground="#64748B" />
+                <TextBox AutomationProperties.AutomationId="OutputDirectoryInput"
+                         Text="{Binding OutputDirectory, UpdateSourceTrigger=PropertyChanged}"
+                         Width="220" FontSize="12" VerticalAlignment="Center" />
+                <Button Content="Browse..." Command="{Binding BrowseOutputFolderCommand}" Margin="6,0,0,0" Padding="8,4" FontSize="12" Background="#E2E8F0" Foreground="#1F2937" />
             </WrapPanel>
         </Border>
 
-        <!-- CONTENT TABS: SEARCH RESULTS & DOWNLOAD QUEUE -->
+        <!-- CONTENT TABS: SEARCH RESULTS, ACCOUNT PLAYLISTS & DOWNLOAD QUEUE -->
         <TabControl Grid.Row="3" SelectedIndex="{Binding SelectedTabIndex}" Background="Transparent" BorderThickness="0">
             <!-- TAB 1: SEARCH RESULTS -->
-            <TabItem Header="Search Results" Foreground="#FAFAFA">
+            <TabItem AutomationProperties.AutomationId="SearchResultsTab" Header="Search Results">
                 <DataGrid ItemsSource="{Binding SearchResults}" AutoGenerateColumns="False" 
-                          Background="#1E1E22" RowBackground="#232327" AlternatingRowBackground="#1A1A1D"
-                          Foreground="#FAFAFA" GridLinesVisibility="None" HeadersVisibility="Column"
+                          Background="White" RowBackground="White" AlternatingRowBackground="#F8FAFC"
+                          Foreground="#1F2937" GridLinesVisibility="None" HeadersVisibility="Column"
                           CanUserAddRows="False" IsReadOnly="True" Margin="0,8,0,0">
+                    <DataGrid.RowStyle>
+                        <Style TargetType="{x:Type DataGridRow}">
+                            <Setter Property="DetailsVisibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsPlaylistExpanded}" Value="True">
+                                    <Setter Property="DetailsVisibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </DataGrid.RowStyle>
+                    <DataGrid.RowDetailsTemplate>
+                        <DataTemplate>
+                            <Border Background="#F1F5F9" Padding="12,8" BorderBrush="#E2E8F0" BorderThickness="0,1,0,0">
+                                <StackPanel>
+                                    <TextBlock Text="{Binding PlaylistTracksStatus}" Foreground="#475569"
+                                               TextWrapping="Wrap" Margin="0,0,0,6" />
+                                    <ItemsControl ItemsSource="{Binding PlaylistTracks}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <DockPanel Margin="0,2">
+                                                    <Button DockPanel.Dock="Right" Content="+ Queue track" Padding="6,2"
+                                                            FontSize="11" Background="#059669"
+                                                            Command="{Binding DataContext.AddSearchResultToQueueCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                            CommandParameter="{Binding}" />
+                                                    <TextBlock Text="{Binding Title}" VerticalAlignment="Center"
+                                                               TextTrimming="CharacterEllipsis" Margin="0,0,10,0" />
+                                                </DockPanel>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </DataGrid.RowDetailsTemplate>
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="Type" Binding="{Binding TypeLabel}" Width="80" />
                         <DataGridTextColumn Header="Title" Binding="{Binding Title}" Width="*" />
                         <DataGridTextColumn Header="Artist / Channel" Binding="{Binding Author}" Width="200" />
                         <DataGridTextColumn Header="Duration / Tracks" Binding="{Binding DurationOrCountFormatted}" Width="120" />
-                        <DataGridTemplateColumn Header="Action" Width="100">
+                        <DataGridTemplateColumn Header="Action" Width="190">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
-                                    <Button Content="+ Queue" Padding="6,2" FontSize="12"
-                                            Command="{Binding DataContext.AddSearchResultToQueueCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                            CommandParameter="{Binding}" Background="#10B981" />
+                                    <StackPanel Orientation="Horizontal">
+                                        <Button AutomationProperties.AutomationId="QueueSearchResultButton"
+                                                Content="+ Queue" Padding="6,2" FontSize="12" Margin="0,0,4,0"
+                                                Command="{Binding DataContext.AddSearchResultToQueueCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                CommandParameter="{Binding}" Background="#059669" />
+                                        <Button Content="{Binding ExpandButtonLabel}" Padding="6,2" FontSize="12"
+                                                Command="{Binding DataContext.ToggleSearchResultPlaylistExpansionCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                CommandParameter="{Binding}" Background="#2563EB">
+                                            <Button.Style>
+                                                <Style TargetType="{x:Type Button}">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                    <Setter Property="Foreground" Value="#FFFFFF" />
+                                                    <Setter Property="FontWeight" Value="SemiBold" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsPlaylist}" Value="True">
+                                                            <Setter Property="Visibility" Value="Visible" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Button.Style>
+                                        </Button>
+                                    </StackPanel>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
@@ -157,41 +259,153 @@
                 </DataGrid>
             </TabItem>
 
-            <!-- TAB 2: DOWNLOAD QUEUE -->
-            <TabItem Header="Download Queue" Foreground="#FAFAFA">
-                <DataGrid ItemsSource="{Binding QueueTracks}" AutoGenerateColumns="False"
-                          Background="#1E1E22" RowBackground="#232327" AlternatingRowBackground="#1A1A1D"
-                          Foreground="#FAFAFA" GridLinesVisibility="None" HeadersVisibility="Column"
-                          CanUserAddRows="False" Margin="0,8,0,0">
-                    <DataGrid.ContextMenu>
-                        <ContextMenu Background="#27272A" Foreground="#FAFAFA">
-                            <MenuItem Header="Expand Playlist to Tracks" 
-                                      Command="{Binding ExpandPlaylistCommand}"
-                                      CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=ContextMenu}, Path=PlacementTarget.SelectedItem}" />
-                        </ContextMenu>
-                    </DataGrid.ContextMenu>
-                    <DataGrid.Columns>
-                        <DataGridCheckBoxColumn Header="Sel" Binding="{Binding IsSelected}" Width="45" />
-                        <DataGridTextColumn Header="Title" Binding="{Binding Title}" Width="*" IsReadOnly="True" />
-                        <DataGridTextColumn Header="Artist" Binding="{Binding Artist}" Width="180" IsReadOnly="True" />
-                        <DataGridTextColumn Header="Duration" Binding="{Binding DurationFormatted}" Width="80" IsReadOnly="True" />
-                        <DataGridTextColumn Header="Status" Binding="{Binding State}" Width="90" IsReadOnly="True" />
-                        <DataGridTemplateColumn Header="Progress" Width="140">
-                            <DataGridTemplateColumn.CellTemplate>
-                                <DataTemplate>
-                                    <ProgressBar Value="{Binding Progress}" Maximum="100" Height="14" Background="#374151" Foreground="#3B82F6" />
-                                </DataTemplate>
-                            </DataGridTemplateColumn.CellTemplate>
-                        </DataGridTemplateColumn>
-                        <DataGridTextColumn Header="Speed" Binding="{Binding Speed}" Width="80" IsReadOnly="True" />
-                        <DataGridTextColumn Header="ETA" Binding="{Binding Eta}" Width="60" IsReadOnly="True" />
-                    </DataGrid.Columns>
-                </DataGrid>
+            <!-- TAB 2: ACCOUNT PLAYLIST LIBRARY -->
+            <TabItem AutomationProperties.AutomationId="AccountLibraryTab" Header="My Playlists">
+                <TabControl Margin="0,8,0,0">
+                    <TabItem Header="YouTube">
+                        <DockPanel LastChildFill="True">
+                            <Border DockPanel.Dock="Top" Background="White" BorderBrush="#E2E8F0" BorderThickness="1"
+                                    CornerRadius="6" Padding="10">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="{Binding AccountLibraryStatus}" VerticalAlignment="Center"
+                                               Foreground="#475569" TextTrimming="CharacterEllipsis" />
+                                    <Button Grid.Column="1" AutomationProperties.AutomationId="BrowseAccountPlaylistsButton"
+                                            Content="Refresh Playlists" Command="{Binding BrowseAccountPlaylistsCommand}"
+                                            Background="#2563EB" Margin="10,0,0,0" />
+                                </Grid>
+                            </Border>
+                            <DataGrid ItemsSource="{Binding AccountPlaylists}" AutoGenerateColumns="False"
+                                      Background="White" RowBackground="White" AlternatingRowBackground="#F8FAFC"
+                                      Foreground="#1F2937" GridLinesVisibility="None" HeadersVisibility="Column"
+                                      CanUserAddRows="False" IsReadOnly="True" Margin="0,8,0,0">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Title" Binding="{Binding Title}" Width="*" />
+                                    <DataGridTextColumn Header="Owner" Binding="{Binding Author}" Width="200" />
+                                    <DataGridTextColumn Header="Tracks" Binding="{Binding DurationOrCountFormatted}" Width="110" />
+                                    <DataGridTemplateColumn Header="Action" Width="135">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <Button AutomationProperties.AutomationId="AccountPlaylistQueueButton"
+                                                        Content="Add tracks to queue" Padding="6,2" FontSize="12"
+                                                        Command="{Binding DataContext.AddAccountPlaylistToQueueCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                        CommandParameter="{Binding}" Background="#059669" />
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </DockPanel>
+                    </TabItem>
+                    <TabItem Header="YouTube Music">
+                        <DockPanel LastChildFill="True">
+                            <Border DockPanel.Dock="Top" Background="White" BorderBrush="#E2E8F0" BorderThickness="1"
+                                    CornerRadius="6" Padding="10">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="{Binding YouTubeMusicLibraryStatus}" VerticalAlignment="Center"
+                                               Foreground="#475569" TextTrimming="CharacterEllipsis" />
+                                    <Button Grid.Column="1" AutomationProperties.AutomationId="BrowseYouTubeMusicPlaylistsButton"
+                                            Content="Refresh Playlists" Command="{Binding BrowseYouTubeMusicPlaylistsCommand}"
+                                            Background="#2563EB" Margin="10,0,0,0" />
+                                </Grid>
+                            </Border>
+                            <DataGrid ItemsSource="{Binding YouTubeMusicPlaylists}" AutoGenerateColumns="False"
+                                      Background="White" RowBackground="White" AlternatingRowBackground="#F8FAFC"
+                                      Foreground="#1F2937" GridLinesVisibility="None" HeadersVisibility="Column"
+                                      CanUserAddRows="False" IsReadOnly="True" Margin="0,8,0,0">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Title" Binding="{Binding Title}" Width="*" />
+                                    <DataGridTextColumn Header="Owner" Binding="{Binding Author}" Width="200" />
+                                    <DataGridTextColumn Header="Tracks" Binding="{Binding DurationOrCountFormatted}" Width="110" />
+                                    <DataGridTemplateColumn Header="Action" Width="135">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <Button AutomationProperties.AutomationId="YouTubeMusicPlaylistQueueButton"
+                                                        Content="Add tracks to queue" Padding="6,2" FontSize="12"
+                                                        Command="{Binding DataContext.AddAccountPlaylistToQueueCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                        CommandParameter="{Binding}" Background="#059669" />
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </DockPanel>
+                    </TabItem>
+                </TabControl>
+            </TabItem>
+
+            <!-- TAB 3: DOWNLOAD QUEUE -->
+            <TabItem AutomationProperties.AutomationId="DownloadQueueTab" Header="Download Queue">
+                <DockPanel LastChildFill="True">
+                    <Border DockPanel.Dock="Top" Background="White" BorderBrush="#E2E8F0" BorderThickness="1"
+                            CornerRadius="6" Padding="8" Margin="0,8,0,0">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Select rows with Ctrl/Shift; the Sel checkbox controls download selection."
+                                       VerticalAlignment="Center" Foreground="#64748B" FontSize="12" />
+                            <Button Grid.Column="1" AutomationProperties.AutomationId="RemoveSelectedQueueRowsButton"
+                                    Content="Remove Selected" Command="{Binding RemoveSelectedQueueTracksCommand}"
+                                    Background="#475569" Margin="8,0,0,0" />
+                            <Button Grid.Column="2" AutomationProperties.AutomationId="ClearDownloadQueueButton"
+                                    Content="Clear Queue" Command="{Binding ClearQueueCommand}"
+                                    Background="#DC2626" Margin="8,0,0,0" />
+                        </Grid>
+                    </Border>
+                    <DataGrid x:Name="QueueDataGrid" AutomationProperties.AutomationId="QueueDataGrid"
+                              ItemsSource="{Binding QueueTracks}" AutoGenerateColumns="False"
+                              Background="White" RowBackground="White" AlternatingRowBackground="#F8FAFC"
+                              Foreground="#1F2937" GridLinesVisibility="None" HeadersVisibility="Column"
+                              CanUserAddRows="False" SelectionMode="Extended" SelectionUnit="FullRow"
+                              SelectionChanged="QueueDataGrid_SelectionChanged" Margin="0,8,0,0">
+                        <DataGrid.ContextMenu>
+                            <ContextMenu Background="White" Foreground="#1F2937">
+                                <MenuItem Header="Expand Playlist to Tracks"
+                                          Command="{Binding ExpandPlaylistCommand}"
+                                          CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=ContextMenu}, Path=PlacementTarget.SelectedItem}" />
+                            </ContextMenu>
+                        </DataGrid.ContextMenu>
+                        <DataGrid.Columns>
+                            <DataGridCheckBoxColumn Header="Sel" Binding="{Binding IsSelected}" Width="45" />
+                            <DataGridTextColumn Header="Title" Binding="{Binding Title}" Width="*" IsReadOnly="True" />
+                            <DataGridTextColumn Header="Artist" Binding="{Binding Artist}" Width="180" IsReadOnly="True" />
+                            <DataGridTextColumn Header="Duration" Binding="{Binding DurationFormatted}" Width="80" IsReadOnly="True" />
+                            <DataGridTextColumn Header="Status" Binding="{Binding State}" Width="90" IsReadOnly="True" />
+                            <DataGridTemplateColumn Header="Error" Width="2*">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding ErrorMessage}" TextTrimming="CharacterEllipsis"
+                                                   ToolTip="{Binding ErrorMessage}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTemplateColumn Header="Progress" Width="140">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <ProgressBar Value="{Binding Progress}" Maximum="100" Height="14" Background="#E2E8F0" Foreground="#2563EB" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTextColumn Header="Speed" Binding="{Binding Speed}" Width="80" IsReadOnly="True" />
+                            <DataGridTextColumn Header="ETA" Binding="{Binding Eta}" Width="60" IsReadOnly="True" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </DockPanel>
             </TabItem>
         </TabControl>
 
         <!-- BOTTOM ACTION BAR -->
-        <Border Grid.Row="4" Background="#202023" CornerRadius="8" Padding="12" Margin="0,10,0,0">
+        <Border Grid.Row="4" Background="White" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,10,0,0">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
@@ -200,14 +414,16 @@
                 </Grid.ColumnDefinitions>
 
                 <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                    <TextBlock Text="{Binding StatusMessage}" FontSize="13" Foreground="#93C5FD" TextTrimming="CharacterEllipsis"/>
-                    <ProgressBar Value="{Binding OverallProgress}" Maximum="100" Height="6" Margin="0,4,16,0" Background="#374151" Foreground="#10B981" />
+                    <TextBlock AutomationProperties.AutomationId="StatusMessage"
+                               Text="{Binding StatusMessage}" FontSize="13" Foreground="#1D4ED8" TextTrimming="CharacterEllipsis"/>
+                    <ProgressBar Value="{Binding OverallProgress}" Maximum="100" Height="6" Margin="0,4,16,0" Background="#E2E8F0" Foreground="#059669" />
                 </StackPanel>
 
-                <Button Grid.Column="1" Content="▶ Download Selected" Command="{Binding DownloadSelectedCommand}" 
-                        Background="#10B981" Margin="0,0,8,0" Padding="16,8" />
+                <Button Grid.Column="1" AutomationProperties.AutomationId="DownloadSelectedButton"
+                        Content="▶ Download Selected" Command="{Binding DownloadSelectedCommand}"
+                        Background="#059669" Margin="0,0,8,0" Padding="16,8" />
                 <Button Grid.Column="2" Content="⏹ Cancel" Command="{Binding CancelDownloadsCommand}" 
-                        Background="#EF4444" Padding="14,8" />
+                        Background="#DC2626" Padding="14,8" />
             </Grid>
         </Border>
     </Grid>

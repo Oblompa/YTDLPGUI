@@ -109,3 +109,38 @@ public partial class MainViewModel : ObservableObject
 * Displays Google/YouTube login interface.
 * Listens for navigation completions to detect when login is achieved (`youtube.com` with `SAPISID` or `LOGIN_INFO` cookies present).
 * Closes modal with `DialogResult = true` once cookies are securely stored.
+
+---
+
+## 5. Signed-In Account Library Browser
+
+Add separate YouTube and YouTube Music account-library views available when signed in. Each view lists playlists from its own service and feeds a selected playlist into the existing inspection and queue flow. Do not merge or deduplicate across the services.
+
+UI and interaction requirements:
+- Provide an independent refresh button, loading state, empty state, and actionable expired-session/access-denied feedback for each service.
+- Keep public search available in guest mode; request sign-in only when an account library is opened.
+- Reuse playlist result/track view models rather than maintaining a second playlist workflow.
+- Reuse the saved Google session for both services. A YouTube Music authentication failure must remain local to that tab and provide actionable reauthentication guidance without clearing YouTube results.
+- Do not expose cookie values or log private account data.
+
+## 6. Lazy Playlist Track Expansion in Search
+
+- Playlist search results provide an explicit **Expand tracks** action with row details for loading state, empty results, errors, and the fetched tracks.
+- Fetch flat track metadata only for the playlist the user expands; do not enumerate every playlist during search.
+- Allow queueing an individual track from expanded details, while preserving the existing action to queue an entire playlist.
+- Use the same authenticated metadata flow for private YouTube and YouTube Music playlist URLs.
+
+## 7. Queue Bulk Management
+
+Add extended row selection to the download queue and provide distinct `Remove Selected` and `Clear Queue` actions.
+
+- Row selection for deletion must be independent from the existing per-track checkbox that controls whether a row is included in a download.
+- `Clear Queue` must confirm before removing a non-empty queue.
+- Do not silently remove or abandon a downloading row. Protect active work and explain the remaining rows, or require the user to cancel active work first.
+- Removing queue entries must not delete downloaded files or alter search results.
+
+**Validation**: Ctrl/Shift-select multiple rows and remove them while confirming download checkboxes remain unchanged; cancel a clear confirmation and confirm the queue is preserved; confirm active downloads are not silently discarded.
+
+## 7. Surface Actionable Download Failures
+
+Show per-track failure detail from the process result rather than only a generic `Failed` state. Include the relevant yt-dlp/FFmpeg stage and actionable message, while keeping credentials and cookie values out of the UI and logs. Provide a useful status for dependency, extraction, transfer, conversion, tagging, and output-file failures.

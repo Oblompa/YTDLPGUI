@@ -45,6 +45,28 @@ public void ParseDownloadProgress_ValidLines_ExtractsCorrectMetrics(
 }
 ```
 
+---
+
+## 4. Reported Download Failure Regression Suite
+
+The user reports that all downloads fail even though search and sign-in work. Treat this as the highest-priority release blocker and add tests for the root cause once reproduced:
+
+- Verify yt-dlp non-zero exit codes and stderr, including FFmpeg/postprocessor failures, propagate to the affected queue row.
+- Cover guest/public and authenticated invocations; assert temporary cookie files are removed and secrets do not appear in logs.
+- Verify a successful run creates a non-empty MP3 in the configured output directory; do not equate a successful process exit with a valid output file.
+- Include at least one real Windows E2E run against content the tester is authorized to download. Gate network/media tests separately from deterministic offline unit tests and never use copyrighted commercial songs as test fixtures.
+
+## 5. Windows Application E2E Test
+
+Use the UI Automation harness in `tests/e2e/Run-ApplicationE2E.ps1` to launch the published WPF app, prepare dependencies, search for a track, queue the first result, download it, and verify the MP3 and completed status. The harness must require explicit confirmation that the selected content is authorized for download, use a unique temporary output directory, and report actionable failure status.
+
+## 6. Account Library and Queue Management Tests
+
+- Authenticated libraries: verify YouTube and YouTube Music load into separate views, refresh independently, reuse the existing queue action, and show source-specific authentication failures; guest public search remains unaffected.
+- YouTube Music API: use deterministic HTTP fixtures to verify SAPISIDHASH authorization, cookie scoping, browse request construction, playlist parsing, and temporary-cookie cleanup without exposing account data.
+- Queue bulk removal: verify extended selection removes only chosen queue rows, does not mutate download-selection checkboxes, clear requires confirmation, and active downloads are not silently discarded.
+- Playlist expansion: verify search does not fetch playlist contents automatically, expanding a result fetches only that playlist, unavailable/malformed entries are skipped, and failed queue expansion preserves its playlist row.
+
 ### 2.2 Title Cleansing Verification
 ```csharp
 [Theory]

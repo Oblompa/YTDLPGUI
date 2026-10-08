@@ -25,7 +25,7 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private bool _isBusy;
     [ObservableProperty] private string _statusMessage = "Ready";
     [ObservableProperty] private AuthStatus _authStatus = new(false, false, null, null);
-    [ObservableProperty] private DependencyStatus _dependencies = new(false, null, false, null);
+    [ObservableProperty] private DependencyStatus _dependencies = new(false, null, false, null, false, null);
     [ObservableProperty] private AudioQualityPreset _qualityPreset = AudioQualityPreset.Cbr320k;
     [ObservableProperty] private string _outputDirectory = string.Empty;
     [ObservableProperty] private bool _embedAlbumArt = true;
@@ -33,11 +33,20 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private bool _cleanTitle = true;
     [ObservableProperty] private int _selectedTabIndex = 0;
     [ObservableProperty] private double _overallProgress = 0;
+    [ObservableProperty] private bool _isDownloadingQueue;
+    [ObservableProperty] private bool _isLoadingAccountPlaylists;
+    [ObservableProperty] private string _accountLibraryStatus = "Sign in to browse playlists in your YouTube account.";
+    [ObservableProperty] private bool _isLoadingYouTubeMusicPlaylists;
+    [ObservableProperty] private string _youTubeMusicLibraryStatus = "Sign in to browse playlists in your YouTube Music account.";
 
     public ObservableCollection<SearchResultItemViewModel> SearchResults { get; } = new();
+    public ObservableCollection<SearchResultItemViewModel> AccountPlaylists { get; } = new();
+    public ObservableCollection<SearchResultItemViewModel> YouTubeMusicPlaylists { get; } = new();
     public ObservableCollection<TrackItemViewModel> QueueTracks { get; } = new();
+    public ObservableCollection<TrackItemViewModel> SelectedQueueTracks { get; } = new();
 
     public event Func<Task>? RequestLoginDialog;
+    public event Func<int, Task<bool>>? RequestClearQueueConfirmation;
 
     public MainViewModel(
         IDependencyManager dependencyManager,
@@ -75,10 +84,15 @@ public partial class MainViewModel : ObservableObject
 
             Dependencies = await _dependencyManager.CheckStatusAsync();
             AuthStatus = await _authManager.GetCurrentAuthStatusAsync();
+            UpdateAccountLibraryStatus();
 
             if (!Dependencies.AllReady)
             {
-                StatusMessage = "yt-dlp or ffmpeg missing. Click 'Setup Dependencies' to install.";
+                StatusMessage = !Dependencies.YtDlpInstalled
+                    ? "yt-dlp and Deno will be installed automatically when you search. FFmpeg is needed to download MP3s."
+                    : !Dependencies.DenoInstalled
+                        ? "Deno is needed to access YouTube media and will be installed when you search."
+                        : "FFmpeg is needed to download MP3s and will be installed when you start a download.";
             }
             else
             {
@@ -111,7 +125,7 @@ public partial class MainViewModel : ObservableObject
             {
                 StatusMessage = "Inspecting URL metadata...";
                 await FetchUrlMetadataAsync(query);
-                SelectedTabIndex = 1; // Switch to Queue tab
+                SelectedTabIndex = 2; // Switch to Queue tab
             }
             else
             {
@@ -132,6 +146,7 @@ public partial class MainViewModel : ObservableObject
 
     private async Task PerformSearchAsync(string query)
     {
+        await EnsureYtDlpReadyAsync();
         SearchResults.Clear();
         var results = await _searchService.SearchAsync(query, SearchFilter, maxResults: 25);
         foreach (var r in results)
@@ -143,150 +158,246 @@ public partial class MainViewModel : ObservableObject
 
     private async Task FetchUrlMetadataAsync(string url)
     {
-        string? cookiesPath = null;
-        if (AuthStatus.IsLoggedIn)
-        {
-            cookiesPath = await _authManager.ExportCookiesToTempFileAsync();
-        }
+        var root = await QueryMetadataWithCurrentAuthAsync(url);
+        int addedCount = ParseAndEnqueueMetadata(root);
+        StatusMessage = addedCount == 0
+            ? "No available tracks were found in this playlist."
+            : $"Added {addedCount} available track(s) to the queue.";
+    }
+
+    private async Task<JsonElement> QueryMetadataWithCurrentAuthAsync(
+        string url,
+        CancellationToken ct = default)
+    {
+        await EnsureYtDlpReadyAsync();
+        var authStatus = await _authManager.GetCurrentAuthStatusAsync(ct);
+        string? cookiesPath = authStatus.IsLoggedIn
+            ? await _authManager.ExportCookiesToTempFileAsync(ct)
+            : null;
 
         try
         {
-            var root = await _runner.QueryMetadataAsync(url, cookiesPath, isFlatPlaylist: true);
-            ParseAndEnqueueMetadata(root, url);
-            StatusMessage = $"Enqueued tracks from URL.";
+            return await _runner.QueryMetadataAsync(
+                url,
+                cookiesPath,
+                isFlatPlaylist: true,
+                ct: ct);
         }
         finally
         {
-            if (cookiesPath != null && File.Exists(cookiesPath))
+            if (cookiesPath is not null && File.Exists(cookiesPath))
             {
-                try { File.Delete(cookiesPath); } catch { /* ignore */ }
+                File.Delete(cookiesPath);
             }
         }
     }
 
-    private void ParseAndEnqueueMetadata(JsonElement root, string fallbackUrl)
+    private int ParseAndEnqueueMetadata(JsonElement root)
     {
-        if (root.TryGetProperty("entries", out var entries) && entries.ValueKind == JsonValueKind.Array)
+        var tracks = ParseAvailablePlaylistTracks(root, includeSingleTrack: true);
+        foreach (var track in tracks)
+        {
+            QueueTracks.Add(CreateQueueTrack(track));
+        }
+
+        return tracks.Count;
+    }
+
+    private IReadOnlyList<SearchResultItem> ParseAvailablePlaylistTracks(
+        JsonElement root,
+        bool includeSingleTrack = false)
+    {
+        var tracks = new List<SearchResultItem>();
+        if (root.ValueKind == JsonValueKind.Object &&
+            root.TryGetProperty("entries", out var entries) &&
+            entries.ValueKind == JsonValueKind.Array)
         {
             foreach (var entry in entries.EnumerateArray())
             {
-                AddJsonEntryToQueue(entry, fallbackUrl);
+                var track = ParseAvailableTrack(entry);
+                if (track is not null)
+                {
+                    tracks.Add(track);
+                }
             }
         }
-        else
+        else if (includeSingleTrack)
         {
-            AddJsonEntryToQueue(root, fallbackUrl);
+            var track = ParseAvailableTrack(root);
+            if (track is not null)
+            {
+                tracks.Add(track);
+            }
         }
+
+        return tracks;
     }
 
-    private void AddJsonEntryToQueue(JsonElement entry, string fallbackUrl)
+    private static SearchResultItem? ParseAvailableTrack(JsonElement entry)
     {
-        string id = entry.TryGetProperty("id", out var idProp) ? idProp.GetString() ?? "" : "";
-        string rawTitle = entry.TryGetProperty("title", out var titleProp) ? titleProp.GetString() ?? "Unknown" : "Unknown";
-        string rawArtist = entry.TryGetProperty("uploader", out var uploaderProp) ? uploaderProp.GetString() ?? "Unknown" : "Unknown";
-
-        string title = CleanTitle ? _cleaner.CleanTitle(rawTitle) : rawTitle;
-        string artist = CleanTitle ? _cleaner.CleanArtist(rawArtist) : rawArtist;
-
-        TimeSpan? duration = null;
-        if (entry.TryGetProperty("duration", out var durProp) && durProp.TryGetDouble(out double durSec))
+        if (entry.ValueKind != JsonValueKind.Object ||
+            (entry.TryGetProperty("is_unavailable", out var unavailable) &&
+             unavailable.ValueKind == JsonValueKind.True))
         {
-            duration = TimeSpan.FromSeconds(durSec);
+            return null;
         }
 
-        string? thumbnail = null;
-        if (entry.TryGetProperty("thumbnail", out var thumbProp))
+        string? id = GetStringProperty(entry, "id");
+        string? title = GetStringProperty(entry, "title");
+        string? availability = GetStringProperty(entry, "availability");
+        if (string.IsNullOrWhiteSpace(id) ||
+            string.IsNullOrWhiteSpace(title) ||
+            title.Equals("Video unavailable", StringComparison.OrdinalIgnoreCase) ||
+            title.Equals("[Private video]", StringComparison.OrdinalIgnoreCase) ||
+            title.Equals("[Deleted video]", StringComparison.OrdinalIgnoreCase) ||
+            availability?.Equals("unavailable", StringComparison.OrdinalIgnoreCase) == true)
         {
-            thumbnail = thumbProp.GetString();
+            return null;
         }
 
-        string trackUrl = !string.IsNullOrEmpty(id) ? $"https://www.youtube.com/watch?v={id}" : fallbackUrl;
-
-        QueueTracks.Add(new TrackItemViewModel
+        string author = GetStringProperty(entry, "uploader") ??
+                        GetStringProperty(entry, "channel") ??
+                        "Unknown Artist";
+        string url = GetStringProperty(entry, "webpage_url") ??
+                     GetStringProperty(entry, "url") ??
+                     string.Empty;
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var trackUri) ||
+            !(trackUri.Host.Equals("youtube.com", StringComparison.OrdinalIgnoreCase) ||
+              trackUri.Host.EndsWith(".youtube.com", StringComparison.OrdinalIgnoreCase)) ||
+            !trackUri.AbsolutePath.Equals("/watch", StringComparison.OrdinalIgnoreCase))
         {
-            Id = id,
-            Title = title,
-            Artist = artist,
-            Duration = duration,
-            ThumbnailUrl = thumbnail,
-            Url = trackUrl,
+            url = $"https://www.youtube.com/watch?v={Uri.EscapeDataString(id)}";
+        }
+
+        TimeSpan? duration = entry.TryGetProperty("duration", out var durationElement) &&
+                             durationElement.ValueKind == JsonValueKind.Number &&
+                             durationElement.TryGetDouble(out double seconds) &&
+                             seconds >= 0
+            ? TimeSpan.FromSeconds(seconds)
+            : null;
+        string? thumbnail = GetStringProperty(entry, "thumbnail");
+
+        return new SearchResultItem(
+            Id: id,
+            Title: title,
+            Author: author,
+            Duration: duration,
+            TrackCount: null,
+            ThumbnailUrl: thumbnail,
+            Url: url,
+            ResultType: SearchResultType.Track);
+    }
+
+    private static string? GetStringProperty(JsonElement element, string propertyName) =>
+        element.ValueKind == JsonValueKind.Object &&
+        element.TryGetProperty(propertyName, out var value) &&
+        value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
+
+    private TrackItemViewModel CreateQueueTrack(SearchResultItem track) =>
+        new()
+        {
+            Id = track.Id,
+            Title = CleanTitle ? _cleaner.CleanTitle(track.Title) : track.Title,
+            Artist = CleanTitle ? _cleaner.CleanArtist(track.Author) : track.Author,
+            Duration = track.Duration,
+            ThumbnailUrl = track.ThumbnailUrl,
+            Url = track.Url,
             IsSelected = true,
             State = DownloadState.Queued,
             IsPlaylist = false
-        });
+        };
+
+    [RelayCommand]
+    public async Task ToggleSearchResultPlaylistExpansionAsync(SearchResultItemViewModel playlist)
+    {
+        if (!playlist.IsPlaylist)
+        {
+            return;
+        }
+
+        if (playlist.IsPlaylistExpanded)
+        {
+            playlist.IsPlaylistExpanded = false;
+            return;
+        }
+
+        if (IsBusy || IsDownloadingQueue)
+        {
+            const string busyMessage = "Finish the current operation before expanding a playlist.";
+            playlist.PlaylistTracksStatus = busyMessage;
+            StatusMessage = busyMessage;
+            return;
+        }
+
+        playlist.IsPlaylistExpanded = true;
+        if (playlist.HasLoadedPlaylistTracks)
+        {
+            return;
+        }
+
+        IsBusy = true;
+        playlist.IsLoadingPlaylistTracks = true;
+        playlist.PlaylistTracksStatus = $"Loading tracks for '{playlist.Title}'...";
+        try
+        {
+            var root = await QueryMetadataWithCurrentAuthAsync(playlist.Url);
+            var tracks = ParseAvailablePlaylistTracks(root);
+            foreach (var track in tracks)
+            {
+                playlist.PlaylistTracks.Add(new SearchResultItemViewModel(track));
+            }
+
+            playlist.HasLoadedPlaylistTracks = true;
+            playlist.PlaylistTracksStatus = tracks.Count == 0
+                ? "No available tracks were found in this playlist."
+                : $"Loaded {tracks.Count} available track(s).";
+        }
+        catch (Exception ex)
+        {
+            playlist.PlaylistTracksStatus = $"Could not load playlist tracks: {ex.Message}";
+            StatusMessage = playlist.PlaylistTracksStatus;
+        }
+        finally
+        {
+            playlist.IsLoadingPlaylistTracks = false;
+            IsBusy = false;
+        }
     }
 
     [RelayCommand]
     public async Task ExpandPlaylistAsync(TrackItemViewModel trackItem)
     {
-        if (string.IsNullOrWhiteSpace(trackItem.Url)) return;
+        if (!trackItem.IsPlaylist || string.IsNullOrWhiteSpace(trackItem.Url) || IsBusy || IsDownloadingQueue)
+        {
+            return;
+        }
 
         IsBusy = true;
         StatusMessage = $"Expanding playlist '{trackItem.Title}'...";
 
         try
         {
+            var root = await QueryMetadataWithCurrentAuthAsync(trackItem.Url);
+            var tracks = ParseAvailablePlaylistTracks(root);
+            if (tracks.Count == 0)
+            {
+                throw new InvalidOperationException("No available tracks were found in this playlist.");
+            }
+
             int originalIndex = QueueTracks.IndexOf(trackItem);
-            QueueTracks.Remove(trackItem);
-
-            string? cookiesPath = null;
-            if (AuthStatus.IsLoggedIn)
+            if (originalIndex < 0)
             {
-                cookiesPath = await _authManager.ExportCookiesToTempFileAsync();
+                throw new InvalidOperationException("The playlist is no longer in the queue.");
             }
 
-            try
+            QueueTracks.RemoveAt(originalIndex);
+            foreach (var track in tracks)
             {
-                var root = await _runner.QueryMetadataAsync(trackItem.Url, cookiesPath, isFlatPlaylist: true);
-                if (root.TryGetProperty("entries", out var entries) && entries.ValueKind == JsonValueKind.Array)
-                {
-                    int insertIndex = originalIndex >= 0 ? originalIndex : QueueTracks.Count;
-                    foreach (var entry in entries.EnumerateArray())
-                    {
-                        string id = entry.TryGetProperty("id", out var idProp) ? idProp.GetString() ?? "" : "";
-                        string rawTitle = entry.TryGetProperty("title", out var titleProp) ? titleProp.GetString() ?? "Unknown" : "Unknown";
-                        string rawArtist = entry.TryGetProperty("uploader", out var uploaderProp) ? uploaderProp.GetString() ?? "Unknown" : "Unknown";
-
-                        string title = CleanTitle ? _cleaner.CleanTitle(rawTitle) : rawTitle;
-                        string artist = CleanTitle ? _cleaner.CleanArtist(rawArtist) : rawArtist;
-
-                        TimeSpan? duration = null;
-                        if (entry.TryGetProperty("duration", out var durProp) && durProp.TryGetDouble(out double durSec))
-                        {
-                            duration = TimeSpan.FromSeconds(durSec);
-                        }
-
-                        string? thumbnail = null;
-                        if (entry.TryGetProperty("thumbnail", out var thumbProp))
-                        {
-                            thumbnail = thumbProp.GetString();
-                        }
-
-                        string trackUrl = !string.IsNullOrEmpty(id) ? $"https://www.youtube.com/watch?v={id}" : trackItem.Url;
-
-                        QueueTracks.Insert(insertIndex++, new TrackItemViewModel
-                        {
-                            Id = id,
-                            Title = title,
-                            Artist = artist,
-                            Duration = duration,
-                            ThumbnailUrl = thumbnail,
-                            Url = trackUrl,
-                            IsSelected = true,
-                            State = DownloadState.Queued,
-                            IsPlaylist = false
-                        });
-                    }
-                    StatusMessage = $"Expanded playlist into individual tracks.";
-                }
+                QueueTracks.Insert(originalIndex++, CreateQueueTrack(track));
             }
-            finally
-            {
-                if (cookiesPath != null && File.Exists(cookiesPath))
-                {
-                    try { File.Delete(cookiesPath); } catch { /* ignore */ }
-                }
-            }
+            StatusMessage = $"Expanded playlist into {tracks.Count} available track(s).";
         }
         catch (Exception ex)
         {
@@ -301,6 +412,12 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     public async Task AddSearchResultToQueueAsync(SearchResultItemViewModel searchItem)
     {
+        if (IsBusy || IsDownloadingQueue)
+        {
+            StatusMessage = "Finish the current operation before adding search results.";
+            return;
+        }
+
         if (searchItem.ResultType == SearchResultType.Playlist)
         {
             IsBusy = true;
@@ -308,7 +425,11 @@ public partial class MainViewModel : ObservableObject
             try
             {
                 await FetchUrlMetadataAsync(searchItem.Url);
-                SelectedTabIndex = 1;
+                SelectedTabIndex = 2;
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"Failed to add playlist tracks: {ex.Message}";
             }
             finally
             {
@@ -337,6 +458,199 @@ public partial class MainViewModel : ObservableObject
     }
 
     [RelayCommand]
+    public Task BrowseAccountPlaylistsAsync() =>
+        BrowsePlaylistsAsync(
+            "YouTube",
+            AccountPlaylists,
+            _searchService.BrowseAccountPlaylistsAsync,
+            status => AccountLibraryStatus = status,
+            isLoading => IsLoadingAccountPlaylists = isLoading);
+
+    [RelayCommand]
+    public Task BrowseYouTubeMusicPlaylistsAsync() =>
+        BrowsePlaylistsAsync(
+            "YouTube Music",
+            YouTubeMusicPlaylists,
+            _searchService.BrowseYouTubeMusicPlaylistsAsync,
+            status => YouTubeMusicLibraryStatus = status,
+            isLoading => IsLoadingYouTubeMusicPlaylists = isLoading);
+
+    private async Task BrowsePlaylistsAsync(
+        string serviceName,
+        ObservableCollection<SearchResultItemViewModel> target,
+        Func<CancellationToken, Task<IReadOnlyList<SearchResultItem>>> browseAsync,
+        Action<string> setLibraryStatus,
+        Action<bool> setLoading)
+    {
+        if (IsBusy || IsDownloadingQueue)
+        {
+            setLibraryStatus("Finish the current operation before refreshing playlists.");
+            return;
+        }
+
+        IsBusy = true;
+        setLoading(true);
+        target.Clear();
+
+        try
+        {
+            AuthStatus = await _authManager.GetCurrentAuthStatusAsync();
+            if (!AuthStatus.IsLoggedIn)
+            {
+                setLibraryStatus($"Sign in to browse playlists in your {serviceName} account.");
+                StatusMessage = $"Sign in to browse playlists in your {serviceName} account.";
+                return;
+            }
+
+            setLibraryStatus($"Loading playlists from your {serviceName} account...");
+            await EnsureYtDlpReadyAsync();
+            var playlists = await browseAsync(CancellationToken.None);
+            foreach (var playlist in playlists)
+            {
+                target.Add(new SearchResultItemViewModel(playlist));
+            }
+
+            string status = playlists.Count == 0
+                ? $"No accessible playlists were found in your {serviceName} account."
+                : $"Loaded {playlists.Count} {serviceName} playlists. Choose one to add its tracks to the queue.";
+            setLibraryStatus(status);
+            StatusMessage = status;
+        }
+        catch (Exception ex)
+        {
+            target.Clear();
+            string status =
+                $"Could not load your {serviceName} playlists. Your sign-in may have expired; sign in again and retry. {ex.Message}";
+            setLibraryStatus(status);
+            StatusMessage = status;
+        }
+        finally
+        {
+            setLoading(false);
+            IsBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    public async Task AddAccountPlaylistToQueueAsync(SearchResultItemViewModel playlist)
+    {
+        if (playlist.ResultType != SearchResultType.Playlist || IsBusy || IsDownloadingQueue)
+        {
+            return;
+        }
+
+        IsBusy = true;
+        try
+        {
+            StatusMessage = $"Loading playlist '{playlist.Title}' into the queue...";
+            await FetchUrlMetadataAsync(playlist.Url);
+            SelectedTabIndex = 2;
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Could not add playlist to the queue: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    public void SetSelectedQueueTracks(IEnumerable<TrackItemViewModel> selectedTracks)
+    {
+        SelectedQueueTracks.Clear();
+        foreach (var track in selectedTracks)
+        {
+            if (QueueTracks.Contains(track) && !SelectedQueueTracks.Contains(track))
+            {
+                SelectedQueueTracks.Add(track);
+            }
+        }
+    }
+
+    [RelayCommand]
+    public void RemoveSelectedQueueTracks()
+    {
+        if (IsDownloadingQueue)
+        {
+            StatusMessage = "Cancel the current download batch and wait for it to stop before removing queue rows.";
+            return;
+        }
+
+        var selected = SelectedQueueTracks.ToArray();
+        if (selected.Length == 0)
+        {
+            StatusMessage = "Select one or more queue rows to remove.";
+            return;
+        }
+
+        int removedCount = 0;
+        int protectedCount = 0;
+        foreach (var track in selected)
+        {
+            if (IsActiveDownloadState(track.State))
+            {
+                protectedCount++;
+                continue;
+            }
+
+            if (QueueTracks.Remove(track))
+            {
+                removedCount++;
+            }
+        }
+
+        SelectedQueueTracks.Clear();
+        StatusMessage = protectedCount > 0
+            ? $"Removed {removedCount} queue rows; kept {protectedCount} active download(s)."
+            : $"Removed {removedCount} queue row(s).";
+    }
+
+    [RelayCommand]
+    public async Task ClearQueueAsync()
+    {
+        if (IsDownloadingQueue)
+        {
+            StatusMessage = "Cancel the current download batch and wait for it to stop before clearing the queue.";
+            return;
+        }
+
+        if (QueueTracks.Count == 0)
+        {
+            StatusMessage = "The queue is already empty.";
+            return;
+        }
+
+        if (RequestClearQueueConfirmation is null ||
+            !await RequestClearQueueConfirmation.Invoke(QueueTracks.Count))
+        {
+            StatusMessage = "Queue clear cancelled.";
+            return;
+        }
+
+        int removedCount = 0;
+        int protectedCount = 0;
+        foreach (var track in QueueTracks.ToArray())
+        {
+            if (IsActiveDownloadState(track.State))
+            {
+                protectedCount++;
+                continue;
+            }
+
+            if (QueueTracks.Remove(track))
+            {
+                removedCount++;
+            }
+        }
+
+        SelectedQueueTracks.Clear();
+        StatusMessage = protectedCount > 0
+            ? $"Cleared {removedCount} queue row(s); kept {protectedCount} active download(s)."
+            : "Queue cleared.";
+    }
+
+    [RelayCommand]
     public async Task DownloadSelectedAsync()
     {
         var selectedTracks = QueueTracks.Where(t => t.IsSelected && t.State != DownloadState.Completed).ToList();
@@ -346,16 +660,25 @@ public partial class MainViewModel : ObservableObject
             return;
         }
 
-        if (!Dependencies.AllReady)
+        IsBusy = true;
+        try
         {
-            StatusMessage = "Dependencies missing. Please click Setup Dependencies first.";
+            await EnsureAudioDependenciesReadyAsync();
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Could not prepare download dependencies: {ex.Message}";
+            IsBusy = false;
             return;
         }
 
         _downloadCts = new CancellationTokenSource();
-        IsBusy = true;
+        var downloadCts = _downloadCts;
+        IsDownloadingQueue = true;
         int completedCount = 0;
         int totalCount = selectedTracks.Count;
+        bool downloadCancelled = false;
+        var failures = new List<(string Title, string Message)>();
 
         var config = new AudioPipelineConfig(
             OutputDirectory: OutputDirectory,
@@ -366,42 +689,96 @@ public partial class MainViewModel : ObservableObject
             CleanNoiseFromTitle: CleanTitle
         );
 
-        foreach (var track in selectedTracks)
+        try
         {
-            if (_downloadCts.Token.IsCancellationRequested) break;
-
-            track.State = DownloadState.Downloading;
-            StatusMessage = $"Downloading ({completedCount + 1}/{totalCount}): {track.Title}";
-
-            var progress = new Progress<DownloadProgressUpdate>(u =>
+            foreach (var track in selectedTracks)
             {
-                track.Progress = u.Percent;
-                track.Speed = u.DownloadSpeed;
-                track.Eta = u.Eta;
-                track.State = u.State;
-            });
+                if (downloadCts.Token.IsCancellationRequested)
+                {
+                    track.State = DownloadState.Cancelled;
+                    downloadCancelled = true;
+                    break;
+                }
 
-            var result = await _downloadService.DownloadAudioAsync(track.Url, config, progress, _downloadCts.Token);
+                track.ErrorMessage = null;
+                track.State = DownloadState.Downloading;
+                StatusMessage = $"Downloading ({completedCount + failures.Count + 1}/{totalCount}): {track.Title}";
 
-            if (result.Success)
+                var progress = new Progress<DownloadProgressUpdate>(u =>
+                {
+                    track.Progress = u.Percent;
+                    track.Speed = u.DownloadSpeed;
+                    track.Eta = u.Eta;
+                    track.State = u.State;
+                });
+
+                try
+                {
+                    var result = await _downloadService.DownloadAudioAsync(track.Url, config, progress, downloadCts.Token);
+
+                    if (result.Success)
+                    {
+                        track.State = DownloadState.Completed;
+                        track.Progress = 100;
+                        completedCount++;
+                    }
+                    else if (downloadCts.IsCancellationRequested || result.ExitCode == -2)
+                    {
+                        track.State = DownloadState.Cancelled;
+                        downloadCancelled = true;
+                        break;
+                    }
+                    else
+                    {
+                        track.State = DownloadState.Failed;
+                        track.ErrorMessage = string.IsNullOrWhiteSpace(result.Error)
+                            ? $"yt-dlp failed with exit code {result.ExitCode} and returned no diagnostic."
+                            : result.Error;
+                        failures.Add((track.Title, track.ErrorMessage));
+                    }
+                }
+                catch (OperationCanceledException) when (downloadCts.IsCancellationRequested)
+                {
+                    track.State = DownloadState.Cancelled;
+                    downloadCancelled = true;
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    track.State = DownloadState.Failed;
+                    track.ErrorMessage = ex.Message;
+                    failures.Add((track.Title, ex.Message));
+                }
+
+                OverallProgress = (double)(completedCount + failures.Count) / totalCount * 100.0;
+            }
+
+            if (downloadCancelled || downloadCts.IsCancellationRequested)
             {
-                track.State = DownloadState.Completed;
-                track.Progress = 100;
-                completedCount++;
+                StatusMessage = $"Downloads cancelled. Completed {completedCount} of {totalCount} audio files.";
             }
             else
             {
-                track.State = DownloadState.Failed;
-                track.ErrorMessage = result.Error;
+                StatusMessage = $"Completed {completedCount} of {totalCount} audio files.";
+                if (failures.Count > 0)
+                {
+                    var firstFailure = failures[0];
+                    string conciseError = firstFailure.Message.Replace(Environment.NewLine, " ").Trim();
+                    if (conciseError.Length > 180)
+                    {
+                        conciseError = conciseError[..180] + "...";
+                    }
+                    StatusMessage += $" {failures.Count} failed. First failure ({firstFailure.Title}): {conciseError}";
+                }
             }
-
-            OverallProgress = (double)completedCount / totalCount * 100.0;
         }
-
-        IsBusy = false;
-        StatusMessage = _downloadCts.Token.IsCancellationRequested 
-            ? "Downloads cancelled." 
-            : $"Completed {completedCount} of {totalCount} audio files.";
+        finally
+        {
+            downloadCts.Dispose();
+            _downloadCts = null;
+            IsDownloadingQueue = false;
+            IsBusy = false;
+        }
     }
 
     [RelayCommand]
@@ -415,18 +792,75 @@ public partial class MainViewModel : ObservableObject
     public async Task SetupDependenciesAsync()
     {
         IsBusy = true;
-        StatusMessage = "Provisioning yt-dlp and FFmpeg...";
+        try
+        {
+            await EnsureAudioDependenciesReadyAsync();
+            StatusMessage = "Dependencies installed and ready!";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Failed to provision dependencies: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
 
+    private async Task EnsureYtDlpReadyAsync()
+    {
+        if (await _dependencyManager.GetYtDlpVersionAsync() is null)
+        {
+            StatusMessage = "yt-dlp is missing. Downloading it before continuing...";
+            var progress = new Progress<ProvisioningProgress>(p =>
+            {
+                StatusMessage = $"{p.CurrentStep} ({p.PercentComplete:F0}%)";
+            });
+
+            bool installed = await _dependencyManager.UpdateYtDlpAsync(progress);
+            if (!installed)
+            {
+                throw new InvalidOperationException(
+                    $"yt-dlp and Deno could not be prepared. Check your internet connection and verify the files in '{_dependencyManager.BinDirectory}'.");
+            }
+        }
+
+        StatusMessage = "Preparing Deno for YouTube's JavaScript challenge...";
+        var denoProgress = new Progress<ProvisioningProgress>(p =>
+        {
+            StatusMessage = $"{p.CurrentStep} ({p.PercentComplete:F0}%)";
+        });
+
+        bool denoReady = await _dependencyManager.EnsureDenoAsync(denoProgress);
+        Dependencies = await _dependencyManager.CheckStatusAsync();
+        if (!denoReady || !Dependencies.YtDlpInstalled || !Dependencies.DenoInstalled)
+        {
+            throw new InvalidOperationException(
+                $"yt-dlp could not prepare the required YouTube extraction components. Check your internet connection and verify yt-dlp.exe and deno.exe in '{_dependencyManager.BinDirectory}'.");
+        }
+    }
+
+    private async Task EnsureAudioDependenciesReadyAsync()
+    {
+        Dependencies = await _dependencyManager.CheckStatusAsync();
+        if (Dependencies.AllReady)
+        {
+            return;
+        }
+
+        StatusMessage = "Preparing yt-dlp, Deno, and FFmpeg for audio downloads...";
         var progress = new Progress<ProvisioningProgress>(p =>
         {
             StatusMessage = $"{p.CurrentStep} ({p.PercentComplete:F0}%)";
         });
 
-        bool success = await _dependencyManager.ProvisionAllAsync(progress);
+        bool installed = await _dependencyManager.ProvisionAllAsync(progress);
         Dependencies = await _dependencyManager.CheckStatusAsync();
-        IsBusy = false;
-
-        StatusMessage = success ? "Dependencies installed and ready!" : "Failed to provision dependencies.";
+        if (!installed || !Dependencies.AllReady)
+        {
+            throw new InvalidOperationException(
+                $"yt-dlp, Deno, and FFmpeg could not all be installed. Check your internet connection. Binaries are expected in '{_dependencyManager.BinDirectory}'.");
+        }
     }
 
     [RelayCommand]
@@ -436,6 +870,7 @@ public partial class MainViewModel : ObservableObject
         {
             await RequestLoginDialog.Invoke();
             AuthStatus = await _authManager.GetCurrentAuthStatusAsync();
+            UpdateAccountLibraryStatus();
             StatusMessage = AuthStatus.IsLoggedIn 
                 ? $"Logged in as {AuthStatus.AccountName} ({AuthStatus.DisplayMode})" 
                 : "Still in Guest Mode.";
@@ -447,6 +882,8 @@ public partial class MainViewModel : ObservableObject
     {
         await _authManager.ClearSessionAsync();
         AuthStatus = await _authManager.GetCurrentAuthStatusAsync();
+        AccountPlaylists.Clear();
+        AccountLibraryStatus = "Sign in to browse playlists in your YouTube account.";
         StatusMessage = "Signed out. Switched to Guest Mode.";
     }
 
@@ -487,4 +924,18 @@ public partial class MainViewModel : ObservableObject
                text.Contains("youtube.com", StringComparison.OrdinalIgnoreCase) ||
                text.Contains("youtu.be", StringComparison.OrdinalIgnoreCase);
     }
+
+    private void UpdateAccountLibraryStatus()
+    {
+        AccountLibraryStatus = AuthStatus.IsLoggedIn
+            ? "Refresh to load playlists available to this YouTube account."
+            : "Sign in to browse playlists in your YouTube account.";
+    }
+
+    private static bool IsActiveDownloadState(DownloadState state) =>
+        state is DownloadState.Analyzing
+            or DownloadState.Downloading
+            or DownloadState.ExtractingAudio
+            or DownloadState.Tagging
+            or DownloadState.EmbeddingThumbnail;
 }

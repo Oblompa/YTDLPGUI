@@ -13,6 +13,12 @@ public class YtDlpArgumentBuilder
         return this;
     }
 
+    public YtDlpArgumentBuilder WithJavaScriptRuntime(string denoPath)
+    {
+        _arguments.Add($"--js-runtimes \"deno:{denoPath}\"");
+        return this;
+    }
+
     public YtDlpArgumentBuilder WithCookies(string? cookieFilePath)
     {
         if (!string.IsNullOrWhiteSpace(cookieFilePath) && File.Exists(cookieFilePath))
@@ -45,11 +51,25 @@ public class YtDlpArgumentBuilder
         return this;
     }
 
-    public YtDlpArgumentBuilder WithEmbeddings()
+    public YtDlpArgumentBuilder WithEmbeddings(bool metadata = true, bool thumbnail = true)
     {
-        _arguments.Add("--embed-metadata");
-        _arguments.Add("--embed-thumbnail");
-        _arguments.Add("--convert-thumbnails jpg");
+        if (metadata)
+        {
+            _arguments.Add("--embed-metadata");
+        }
+
+        if (thumbnail)
+        {
+            _arguments.Add("--embed-thumbnail");
+            _arguments.Add("--convert-thumbnails jpg");
+        }
+
+        return this;
+    }
+
+    public YtDlpArgumentBuilder WithPrintAfterMoveFilepath()
+    {
+        _arguments.Add("--print \"after_move:filepath\"");
         return this;
     }
 
@@ -66,6 +86,17 @@ public class YtDlpArgumentBuilder
         return this;
     }
 
+    public YtDlpArgumentBuilder WithPlaylistEnd(int playlistEnd)
+    {
+        if (playlistEnd < 1)
+        {
+            throw new ArgumentOutOfRangeException(nameof(playlistEnd), "Playlist end must be at least 1.");
+        }
+
+        _arguments.Add($"--playlist-end {playlistEnd}");
+        return this;
+    }
+
     public YtDlpArgumentBuilder WithDumpJson()
     {
         _arguments.Add("--dump-single-json");
@@ -75,6 +106,12 @@ public class YtDlpArgumentBuilder
     public YtDlpArgumentBuilder WithNoWarnings()
     {
         _arguments.Add("--no-warnings");
+        return this;
+    }
+
+    public YtDlpArgumentBuilder WithIgnoreErrors()
+    {
+        _arguments.Add("--ignore-errors");
         return this;
     }
 

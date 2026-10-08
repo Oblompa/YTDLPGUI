@@ -16,4 +16,12 @@ public interface ISearchService
         int maxResults = 20,
         CancellationToken ct = default
     );
+
+    Task<IReadOnlyList<SearchResultItem>> BrowseAccountPlaylistsAsync(
+        CancellationToken ct = default
+    );
+
+    Task<IReadOnlyList<SearchResultItem>> BrowseYouTubeMusicPlaylistsAsync(
+        CancellationToken ct = default
+    );
 }

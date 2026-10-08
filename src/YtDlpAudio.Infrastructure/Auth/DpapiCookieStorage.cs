@@ -1,8 +1,10 @@
+using System.Runtime.Versioning;
 using System.Security.Cryptography;
 using System.Text;
 
 namespace YtDlpAudio.Infrastructure.Auth;
 
+[SupportedOSPlatform("windows")]
 public class DpapiCookieStorage
 {
     private readonly string _storageFilePath;
@@ -19,6 +21,7 @@ public class DpapiCookieStorage
 
     public bool HasStoredSession() => File.Exists(_storageFilePath);
 
+    [SupportedOSPlatform("windows")]
     public async Task SaveCookiesAsync(string netscapeCookieContent, CancellationToken ct = default)
     {
         string directory = Path.GetDirectoryName(_storageFilePath)!;
@@ -30,6 +33,7 @@ public class DpapiCookieStorage
         await File.WriteAllBytesAsync(_storageFilePath, encryptedBytes, ct);
     }
 
+    [SupportedOSPlatform("windows")]
     public async Task<string?> LoadCookiesAsync(CancellationToken ct = default)
     {
         if (!File.Exists(_storageFilePath)) return null;

@@ -46,19 +46,21 @@ public class AudioDownloadService
         {
             var builder = new YtDlpArgumentBuilder()
                 .WithFfmpegLocation(_dependencyManager.BinDirectory)
+                .WithJavaScriptRuntime(_dependencyManager.DenoPath)
                 .WithCookies(tempCookiesPath)
                 .WithAudioOnly(config.AudioFormat, config.QualityPreset)
                 .WithStreamSelection(preferPremium: isPremium)
                 .WithOutputTemplate(outputTemplate)
-                .WithNoWarnings();
-
-            if (config.EmbedMetadata || config.EmbedAlbumArt)
-            {
-                builder.WithEmbeddings();
-            }
+                .WithEmbeddings(config.EmbedMetadata, config.EmbedAlbumArt)
+                .WithPrintAfterMoveFilepath();
 
             string commandArgs = builder.Build(targetUrl);
             var result = await _runner.ExecuteAsync(commandArgs, progress, ct);
+
+            if (result.Success)
+            {
+                return VerifyOutputFile(result, config);
+            }
 
             if (!result.Success && ct.IsCancellationRequested)
             {
@@ -79,6 +81,37 @@ public class AudioDownloadService
                 try { File.Delete(tempCookiesPath); } catch { /* best effort cleanup */ }
             }
         }
+    }
+
+    private static YtDlpResult VerifyOutputFile(YtDlpResult result, AudioPipelineConfig config)
+    {
+        string? outputPath = result.Output
+            .Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries)
+            .Select(line => line.Trim().Trim('"'))
+            .LastOrDefault(path => File.Exists(path));
+
+        if (outputPath is null)
+        {
+            return result with
+            {
+                Success = false,
+                Error = $"yt-dlp exited successfully but did not report an output file. Expected a non-empty {config.AudioFormat.ToUpperInvariant()} file in '{config.OutputDirectory}'."
+            };
+        }
+
+        var outputFile = new FileInfo(outputPath);
+        string expectedExtension = $".{config.AudioFormat}";
+        if (!outputFile.Extension.Equals(expectedExtension, StringComparison.OrdinalIgnoreCase) ||
+            outputFile.Length == 0)
+        {
+            return result with
+            {
+                Success = false,
+                Error = $"yt-dlp reported output '{outputPath}', but it is not a non-empty {config.AudioFormat.ToUpperInvariant()} file."
+            };
+        }
+
+        return result;
     }
 
     private static void CleanupPartialFiles(string outputDirectory)

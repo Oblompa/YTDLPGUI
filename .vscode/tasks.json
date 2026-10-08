@@ -1,0 +1,25 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Build Solution",
+			"type": "shell",
+			"command": "dotnet build YtDlpAudio.sln"
+		},
+		{
+			"label": "Run Tests",
+			"type": "shell",
+			"command": "dotnet test YtDlpAudio.sln"
+		},
+		{
+			"label": "Git Status",
+			"type": "shell",
+			"command": "git status"
+		},
+		{
+			"label": "Git Sync Fixes",
+			"type": "shell",
+			"command": "git add src/ tests/ && git commit -m \"Fix compilation issues and test assertions for clean solution build\" && git push origin main"
+		}
+	]
+}

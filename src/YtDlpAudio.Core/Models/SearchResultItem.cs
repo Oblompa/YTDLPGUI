@@ -14,5 +14,6 @@ public record SearchResultItem(
     int? TrackCount,
     string? ThumbnailUrl,
     string Url,
-    SearchResultType ResultType
+    SearchResultType ResultType,
+    string? Source = null
 );

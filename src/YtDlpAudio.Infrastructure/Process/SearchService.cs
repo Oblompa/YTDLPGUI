@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using YtDlpAudio.Core.Models;
 using YtDlpAudio.Core.Services;
 
@@ -6,13 +7,20 @@ namespace YtDlpAudio.Infrastructure.Process;
 
 public class SearchService : ISearchService
 {
+    private const string AccountPlaylistsUrl = "https://www.youtube.com/feed/playlists";
+
     private readonly IYtDlpRunner _runner;
     private readonly IAuthManager? _authManager;
+    private readonly IYouTubeMusicPlaylistClient _youtubeMusicPlaylistClient;
 
-    public SearchService(IYtDlpRunner runner, IAuthManager? authManager = null)
+    public SearchService(
+        IYtDlpRunner runner,
+        IAuthManager? authManager = null,
+        IYouTubeMusicPlaylistClient? youtubeMusicPlaylistClient = null)
     {
         _runner = runner;
         _authManager = authManager;
+        _youtubeMusicPlaylistClient = youtubeMusicPlaylistClient ?? new YouTubeMusicPlaylistClient();
     }
 
     public async Task<IReadOnlyList<SearchResultItem>> SearchAsync(
@@ -27,11 +35,21 @@ public class SearchService : ISearchService
         }
 
         string cleanQuery = query.Trim();
-        string searchPrefix = filter == SearchFilterType.Playlists
-            ? $"ytsearchplaylist{maxResults}:"
-            : $"ytsearch{maxResults}:";
-
-        string searchTarget = $"{searchPrefix}{cleanQuery}";
+        string searchTarget;
+        int? playlistEnd = null;
+        if (filter == SearchFilterType.Playlists)
+        {
+            var searchUrl = new UriBuilder("https://www.youtube.com/results")
+            {
+                Query = $"search_query={Uri.EscapeDataString(cleanQuery)}&sp=EgIQAw%3D%3D"
+            };
+            searchTarget = searchUrl.Uri.AbsoluteUri;
+            playlistEnd = maxResults;
+        }
+        else
+        {
+            searchTarget = $"ytsearch{maxResults}:{cleanQuery}";
+        }
 
         string? cookiesPath = null;
         if (_authManager != null)
@@ -45,7 +63,12 @@ public class SearchService : ISearchService
 
         try
         {
-            var root = await _runner.QueryMetadataAsync(searchTarget, cookiesPath, isFlatPlaylist: true, ct);
+            var root = await _runner.QueryMetadataAsync(
+                searchTarget,
+                cookiesPath,
+                isFlatPlaylist: true,
+                ct,
+                playlistEnd);
             return ParseSearchResults(root, filter);
         }
         finally
@@ -55,6 +78,121 @@ public class SearchService : ISearchService
                 try { File.Delete(cookiesPath); } catch { /* best effort temp cleanup */ }
             }
         }
+    }
+
+    public async Task<IReadOnlyList<SearchResultItem>> BrowseAccountPlaylistsAsync(
+        CancellationToken ct = default)
+    {
+        string cookiesPath = await ExportAccountCookiesAsync(ct);
+        try
+        {
+            var root = await _runner.QueryMetadataAsync(
+                AccountPlaylistsUrl,
+                cookiesPath,
+                isFlatPlaylist: true,
+                ct);
+
+            if (root.ValueKind != JsonValueKind.Object ||
+                !root.TryGetProperty("entries", out var entries) ||
+                entries.ValueKind != JsonValueKind.Array)
+            {
+                throw new InvalidOperationException(
+                    "YouTube did not return a complete playlist list. Your session may have expired; sign in again and retry.");
+            }
+
+            return ParseSearchResults(root, SearchFilterType.Playlists)
+                .Select(playlist => playlist with { Source = "YouTube" })
+                .ToArray();
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            string detail = SanitizeAccountLibraryError(ex.Message);
+            throw new InvalidOperationException(
+                $"Could not load your YouTube playlist library. Your session may have expired or access may be denied. {detail}",
+                ex);
+        }
+        finally
+        {
+            TryDeleteCookieExport(cookiesPath);
+        }
+    }
+
+    public async Task<IReadOnlyList<SearchResultItem>> BrowseYouTubeMusicPlaylistsAsync(
+        CancellationToken ct = default)
+    {
+        string cookiesPath = await ExportAccountCookiesAsync(ct);
+        try
+        {
+            string cookies = await File.ReadAllTextAsync(cookiesPath, ct);
+            var playlists = await _youtubeMusicPlaylistClient.GetLibraryPlaylistsAsync(cookies, ct);
+            return playlists
+                .Select(playlist => playlist with { Source = "YouTube Music" })
+                .ToArray();
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            string detail = SanitizeAccountLibraryError(ex.Message);
+            throw new InvalidOperationException(
+                $"Could not load your YouTube Music playlist library. Your session may have expired or access may be denied. {detail}",
+                ex);
+        }
+        finally
+        {
+            TryDeleteCookieExport(cookiesPath);
+        }
+    }
+
+    private async Task<string> ExportAccountCookiesAsync(CancellationToken ct)
+    {
+        if (_authManager is null)
+        {
+            throw new InvalidOperationException("Sign in to browse playlists in your YouTube account.");
+        }
+
+        var authStatus = await _authManager.GetCurrentAuthStatusAsync(ct);
+        if (!authStatus.IsLoggedIn)
+        {
+            throw new InvalidOperationException("Sign in to browse playlists in your YouTube account.");
+        }
+
+        return await _authManager.ExportCookiesToTempFileAsync(ct);
+    }
+
+    private static void TryDeleteCookieExport(string cookiesPath)
+    {
+        try
+        {
+            if (File.Exists(cookiesPath))
+            {
+                File.Delete(cookiesPath);
+            }
+        }
+        catch
+        {
+            // Best-effort removal of the temporary authentication export.
+        }
+    }
+
+    private static string SanitizeAccountLibraryError(string message)
+    {
+        string sanitized = Regex.Replace(message, @"https?://[^\s""'<>]+", "[URL]", RegexOptions.IgnoreCase);
+        sanitized = Regex.Replace(
+            sanitized,
+            @"(?im)\b(authorization|proxy-authorization|cookie|cookies|set-cookie)\b\s*[:=][^\r\n]*",
+            "$1=[REDACTED]");
+        sanitized = Regex.Replace(
+            sanitized,
+            @"(?i)\b(access[_-]?token|refresh[_-]?token|token|sapisid|apisid|sid|hsid|ssid|login_info|visitor_info1_live|ysc|__secure-[\w-]+)\b\s*=\s*[^\s,;""}]+",
+            "$1=[REDACTED]");
+        return sanitized;
     }
 
     private static IReadOnlyList<SearchResultItem> ParseSearchResults(JsonElement root, SearchFilterType filter)

@@ -1,7 +1,7 @@
 # Specialist Plan 01: Prerequisite & Dependency Provisioner
 
 ## Objective
-Implement an autonomous prerequisite provisioner that ensures `yt-dlp.exe`, `ffmpeg.exe`, and `ffprobe.exe` are present, verified, and kept up-to-date in `%LOCALAPPDATA%\YtDlpAudio\bin\` without altering the Windows system `PATH`.
+Implement an autonomous prerequisite provisioner that ensures `yt-dlp.exe`, `ffmpeg.exe`, `ffprobe.exe`, and the Deno JavaScript runtime are present and verified in `%LOCALAPPDATA%\YtDlpAudio\bin\` without altering the Windows system `PATH`. Deno 2.3.0 or newer is required to solve YouTube's JavaScript challenges.
 
 ---
 
@@ -21,6 +21,13 @@ Implement an autonomous prerequisite provisioner that ensures `yt-dlp.exe`, `ffm
   * `%LOCALAPPDATA%\YtDlpAudio\bin\ffmpeg.exe`
   * `%LOCALAPPDATA%\YtDlpAudio\bin\ffprobe.exe`
 
+### 1.3 Deno JavaScript Runtime
+* **Source:** Official Deno GitHub releases
+* **Direct Asset URL:** `https://github.com/denoland/deno/releases/latest/download/deno-x86_64-pc-windows-msvc.zip`
+* **Minimum Version:** 2.3.0
+* **Local Path:** `%LOCALAPPDATA%\YtDlpAudio\bin\deno.exe`
+* **Purpose:** Required by yt-dlp to solve YouTube's JavaScript challenges and retrieve media formats.
+
 ---
 
 ## 2. Interface Definition (`IDependencyManager`)
@@ -33,8 +40,12 @@ public record DependencyStatus(
     string? YtDlpVersion,
     bool FFmpegInstalled,
     string? FFmpegVersion,
-    bool AllReady => YtDlpInstalled && FFmpegInstalled
-);
+    bool DenoInstalled,
+    string? DenoVersion
+)
+{
+    public bool AllReady => YtDlpInstalled && FFmpegInstalled && DenoInstalled;
+}
 
 public record ProvisioningProgress(
     string CurrentStep,
@@ -49,10 +60,12 @@ public interface IDependencyManager
     string YtDlpPath { get; }
     string FFmpegPath { get; }
     string FFprobePath { get; }
+    string DenoPath { get; }
 
     Task<DependencyStatus> CheckStatusAsync(CancellationToken ct = default);
     Task<bool> ProvisionAllAsync(IProgress<ProvisioningProgress> progress, CancellationToken ct = default);
     Task<bool> UpdateYtDlpAsync(IProgress<ProvisioningProgress> progress, CancellationToken ct = default);
+    Task<bool> EnsureDenoAsync(IProgress<ProvisioningProgress> progress, CancellationToken ct = default);
     Task<string?> GetYtDlpVersionAsync(CancellationToken ct = default);
 }
 ```
@@ -67,7 +80,7 @@ public interface IDependencyManager
        ▼
 CheckStatusAsync()
        │
-       ├─► Are yt-dlp.exe & ffmpeg.exe present in %LOCALAPPDATA%\YtDlpAudio\bin\?
+       ├─► Are yt-dlp.exe, ffmpeg.exe, ffprobe.exe, and deno.exe present in %LOCALAPPDATA%\YtDlpAudio\bin\?
        │   ├── YES ──► Quick validation (check execute permissions & version string)
        │   └── NO  ──► Emit Status: MissingDependencies
        │
@@ -81,15 +94,21 @@ CheckStatusAsync()
        │      - Fetch SHA2-256SUMS, compute SHA256 of downloaded file, verify match
        │      - Atomic write: download to yt-dlp.exe.tmp, rename to yt-dlp.exe
        │
-       ├─► 3. Download FFmpeg-Builds archive
+       ├─► 3. Download Deno for Windows x64
+       │      - Download the official latest release archive
+       │      - Extract only deno.exe into the same binary directory
+       │      - Verify the installed version is at least 2.3.0
+       │
+       ├─► 4. Download FFmpeg-Builds archive
        │      - Download ffmpeg-master-latest-win64-gpl.zip to temp folder
        │      - Extract only bin/ffmpeg.exe and bin/ffprobe.exe using System.IO.Compression.ZipFile
        │      - Move extracted binaries to %LOCALAPPDATA%\YtDlpAudio\bin\
        │      - Clean up temporary zip file
        │
-       └─► 4. Verification Check
+       └─► 5. Verification Check
               - Execute `yt-dlp.exe --version`
               - Execute `ffmpeg.exe -version`
+              - Execute `deno.exe --version`
               - Return ready status
 ```
 
