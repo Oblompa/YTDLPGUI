@@ -98,3 +98,17 @@ The user reports that all downloads fail although search works. Treat download s
 - Add unit/process regression tests for the discovered failure and an opt-in real Windows E2E check using only user-authorized media.
 
 **Acceptance criteria**: A selected authorized public track downloads as a non-empty MP3 without login; conversion or output failures identify the failing stage and present sanitized actionable diagnostics.
+
+If yt-dlp exits successfully without printing `after_move:filepath`, compare the output directory with its pre-run snapshot and accept only a newly created or changed, non-empty file of the requested format. Never treat a pre-existing file as this run's output.
+
+## 6. Output Folder Organization
+
+- Playlist downloads place all queued tracks in a subfolder named after the playlist.
+- Individually queued songs are saved in a subfolder named after the artist.
+- Sanitize folder names as single Windows path components, and keep generated paths under the configured output directory.
+
+## 7. Download Performance Guardrails
+
+- Preserve the selected MP3 quality preset, metadata embedding, and album-art behavior while measuring download stages.
+- Restrict output snapshots for flat templates to the requested audio extension and top-level directory; nested custom templates continue to use recursive validation.
+- Use measured preparation, transfer, post-processing, validation, and queue durations to identify dominant costs before changing process reuse or queue concurrency.

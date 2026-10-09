@@ -1,7 +1,9 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Extensions.Logging;
 using YtDlpAudio.Core.Models;
 using YtDlpAudio.Core.Services;
 using YtDlpAudio.Infrastructure.Process;
@@ -17,6 +19,7 @@ public partial class MainViewModel : ObservableObject
     private readonly IMetadataCleaner _cleaner;
     private readonly AudioDownloadService _downloadService;
     private readonly ISettingsService _settingsService;
+    private readonly ILogger<MainViewModel> _logger;
 
     private CancellationTokenSource? _downloadCts;
 
@@ -55,7 +58,8 @@ public partial class MainViewModel : ObservableObject
         ISearchService searchService,
         IMetadataCleaner cleaner,
         AudioDownloadService downloadService,
-        ISettingsService settingsService)
+        ISettingsService settingsService,
+        ILogger<MainViewModel>? logger = null)
     {
         _dependencyManager = dependencyManager;
         _authManager = authManager;
@@ -64,6 +68,7 @@ public partial class MainViewModel : ObservableObject
         _cleaner = cleaner;
         _downloadService = downloadService;
         _settingsService = settingsService;
+        _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<MainViewModel>.Instance;
     }
 
     [RelayCommand]
@@ -195,9 +200,13 @@ public partial class MainViewModel : ObservableObject
     private int ParseAndEnqueueMetadata(JsonElement root)
     {
         var tracks = ParseAvailablePlaylistTracks(root, includeSingleTrack: true);
+        bool hasPlaylistEntries = root.ValueKind == JsonValueKind.Object &&
+                                  root.TryGetProperty("entries", out var entries) &&
+                                  entries.ValueKind == JsonValueKind.Array;
+        string? playlistTitle = hasPlaylistEntries ? GetStringProperty(root, "title") : null;
         foreach (var track in tracks)
         {
-            QueueTracks.Add(CreateQueueTrack(track));
+            QueueTracks.Add(CreateQueueTrack(track, playlistTitle));
         }
 
         return tracks.Count;
@@ -295,12 +304,15 @@ public partial class MainViewModel : ObservableObject
             ? value.GetString()
             : null;
 
-    private TrackItemViewModel CreateQueueTrack(SearchResultItem track) =>
-        new()
+    private TrackItemViewModel CreateQueueTrack(SearchResultItem track, string? outputFolderName = null)
+    {
+        string artist = CleanTitle ? _cleaner.CleanArtist(track.Author) : track.Author;
+        return new TrackItemViewModel
         {
             Id = track.Id,
             Title = CleanTitle ? _cleaner.CleanTitle(track.Title) : track.Title,
-            Artist = CleanTitle ? _cleaner.CleanArtist(track.Author) : track.Author,
+            Artist = artist,
+            OutputFolderName = string.IsNullOrWhiteSpace(outputFolderName) ? artist : outputFolderName,
             Duration = track.Duration,
             ThumbnailUrl = track.ThumbnailUrl,
             Url = track.Url,
@@ -308,6 +320,7 @@ public partial class MainViewModel : ObservableObject
             State = DownloadState.Queued,
             IsPlaylist = false
         };
+    }
 
     [RelayCommand]
     public async Task ToggleSearchResultPlaylistExpansionAsync(SearchResultItemViewModel playlist)
@@ -395,7 +408,7 @@ public partial class MainViewModel : ObservableObject
             QueueTracks.RemoveAt(originalIndex);
             foreach (var track in tracks)
             {
-                QueueTracks.Insert(originalIndex++, CreateQueueTrack(track));
+                QueueTracks.Insert(originalIndex++, CreateQueueTrack(track, trackItem.Title));
             }
             StatusMessage = $"Expanded playlist into {tracks.Count} available track(s).";
         }
@@ -446,6 +459,7 @@ public partial class MainViewModel : ObservableObject
                 Id = searchItem.Id,
                 Title = title,
                 Artist = artist,
+                OutputFolderName = artist,
                 Duration = searchItem.Model.Duration,
                 ThumbnailUrl = searchItem.ThumbnailUrl,
                 Url = searchItem.Url,
@@ -651,6 +665,27 @@ public partial class MainViewModel : ObservableObject
     }
 
     [RelayCommand]
+    public void ClearCompletedQueueTracks()
+    {
+        var completedTracks = QueueTracks
+            .Where(track => track.State == DownloadState.Completed)
+            .ToArray();
+        if (completedTracks.Length == 0)
+        {
+            StatusMessage = "There are no completed downloads to clear.";
+            return;
+        }
+
+        foreach (var track in completedTracks)
+        {
+            QueueTracks.Remove(track);
+            SelectedQueueTracks.Remove(track);
+        }
+
+        StatusMessage = $"Cleared {completedTracks.Length} completed download(s).";
+    }
+
+    [RelayCommand]
     public async Task DownloadSelectedAsync()
     {
         var selectedTracks = QueueTracks.Where(t => t.IsSelected && t.State != DownloadState.Completed).ToList();
@@ -660,10 +695,13 @@ public partial class MainViewModel : ObservableObject
             return;
         }
 
+        var queueStopwatch = Stopwatch.StartNew();
+        var dependencyStopwatch = Stopwatch.StartNew();
         IsBusy = true;
         try
         {
             await EnsureAudioDependenciesReadyAsync();
+            dependencyStopwatch.Stop();
         }
         catch (Exception ex)
         {
@@ -679,6 +717,8 @@ public partial class MainViewModel : ObservableObject
         int totalCount = selectedTracks.Count;
         bool downloadCancelled = false;
         var failures = new List<(string Title, string Message)>();
+        var downloadTimings = new List<DownloadTiming>();
+        var queueProcessingStopwatch = Stopwatch.StartNew();
 
         var config = new AudioPipelineConfig(
             OutputDirectory: OutputDirectory,
@@ -714,7 +754,16 @@ public partial class MainViewModel : ObservableObject
 
                 try
                 {
-                    var result = await _downloadService.DownloadAudioAsync(track.Url, config, progress, downloadCts.Token);
+                    var result = await _downloadService.DownloadAudioAsync(
+                        track.Url,
+                        config,
+                        progress,
+                        downloadCts.Token,
+                        track.OutputFolderName);
+                    if (result.Timing is not null)
+                    {
+                        downloadTimings.Add(result.Timing);
+                    }
 
                     if (result.Success)
                     {
@@ -771,6 +820,14 @@ public partial class MainViewModel : ObservableObject
                     StatusMessage += $" {failures.Count} failed. First failure ({firstFailure.Title}): {conciseError}";
                 }
             }
+
+            queueProcessingStopwatch.Stop();
+            queueStopwatch.Stop();
+            AppendDownloadTimingSummary(
+                queueStopwatch.Elapsed,
+                dependencyStopwatch.Elapsed,
+                queueProcessingStopwatch.Elapsed,
+                downloadTimings);
         }
         finally
         {
@@ -780,6 +837,37 @@ public partial class MainViewModel : ObservableObject
             IsBusy = false;
         }
     }
+
+    private void AppendDownloadTimingSummary(
+        TimeSpan total,
+        TimeSpan dependencySetup,
+        TimeSpan queueProcessing,
+        IReadOnlyCollection<DownloadTiming> timings)
+    {
+        TimeSpan process = TimeSpan.FromTicks(timings.Sum(timing => timing.Process.Ticks));
+        TimeSpan transfer = TimeSpan.FromTicks(timings.Sum(timing => timing.Transfer?.Ticks ?? 0));
+        TimeSpan postProcessing = TimeSpan.FromTicks(timings.Sum(timing => timing.PostProcessing?.Ticks ?? 0));
+        string summary =
+            $"Time: {FormatElapsed(total)} total; {FormatElapsed(dependencySetup)} setup; " +
+            $"{FormatElapsed(queueProcessing)} queue; yt-dlp {FormatElapsed(process)} " +
+            $"(transfer {FormatElapsed(transfer)}, post-processing {FormatElapsed(postProcessing)}).";
+
+        _logger.LogInformation(
+            "Download queue timing: items={ItemCount}, total={TotalMilliseconds} ms, dependency-setup={DependencySetupMilliseconds} ms, queue-processing={QueueProcessingMilliseconds} ms, yt-dlp-process-sum={ProcessMilliseconds} ms, transfer-sum={TransferMilliseconds} ms, post-processing-sum={PostProcessingMilliseconds} ms.",
+            timings.Count,
+            total.TotalMilliseconds,
+            dependencySetup.TotalMilliseconds,
+            queueProcessing.TotalMilliseconds,
+            process.TotalMilliseconds,
+            transfer.TotalMilliseconds,
+            postProcessing.TotalMilliseconds);
+        StatusMessage += $" {summary}";
+    }
+
+    private static string FormatElapsed(TimeSpan elapsed) =>
+        elapsed.TotalHours >= 1
+            ? elapsed.ToString(@"h\:mm\:ss")
+            : elapsed.ToString(@"m\:ss");
 
     [RelayCommand]
     public void CancelDownloads()

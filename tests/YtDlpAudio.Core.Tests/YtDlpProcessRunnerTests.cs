@@ -50,4 +50,22 @@ public class YtDlpProcessRunnerTests
         Assert.Contains("standard-output", result.Output);
         Assert.Contains("ERROR: simulated failure", result.Error);
     }
+
+    [Fact]
+    public async Task ExecuteAsync_ReportsTransferAndPostProcessingTimings()
+    {
+        string commandProcessor = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.System),
+            "cmd.exe");
+        var runner = new YtDlpProcessRunner(new CommandDependencyManager(commandProcessor));
+
+        var result = await runner.ExecuteAsync(
+            "/c echo [download] 50% of 10MiB at 1MiB/s ETA 00:05&echo [download] 100% of 10MiB&echo [ExtractAudio] Destination: simulated.mp3");
+
+        Assert.True(result.Success);
+        Assert.NotNull(result.Timing);
+        Assert.True(result.Timing.Process >= TimeSpan.Zero);
+        Assert.NotNull(result.Timing.Transfer);
+        Assert.NotNull(result.Timing.PostProcessing);
+    }
 }

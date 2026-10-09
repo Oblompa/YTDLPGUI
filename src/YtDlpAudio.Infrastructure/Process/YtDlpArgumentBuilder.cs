@@ -73,6 +73,13 @@ public class YtDlpArgumentBuilder
         return this;
     }
 
+    public YtDlpArgumentBuilder WithNewlineProgress()
+    {
+        _arguments.Add("--progress");
+        _arguments.Add("--newline");
+        return this;
+    }
+
     public YtDlpArgumentBuilder WithOutputTemplate(string template)
     {
         _arguments.Add($"-o \"{template}\"");

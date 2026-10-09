@@ -26,5 +26,15 @@ public record YtDlpResult(
     bool Success,
     int ExitCode,
     string Output,
-    string? Error
-);
+    string? Error)
+{
+    public DownloadTiming? Timing { get; init; }
+}
+
+public sealed record DownloadTiming(
+    TimeSpan Preparation,
+    TimeSpan Process,
+    TimeSpan? Transfer,
+    TimeSpan? PostProcessing,
+    TimeSpan Validation,
+    TimeSpan Total);
