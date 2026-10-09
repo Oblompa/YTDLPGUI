@@ -146,7 +146,11 @@
                 <TextBox Grid.Column="0"
                          AutomationProperties.AutomationId="SearchInput"
                          Text="{Binding InputText, UpdateSourceTrigger=PropertyChanged}"
-                         ToolTip="Paste YouTube/YT Music URL or type a song, artist, or playlist title"/>
+                         ToolTip="Paste YouTube/YT Music URL or type a song, artist, or playlist title">
+                    <TextBox.InputBindings>
+                        <KeyBinding Key="Enter" Command="{Binding SubmitInputCommand}" />
+                    </TextBox.InputBindings>
+                </TextBox>
 
                 <ComboBox Grid.Column="1" AutomationProperties.AutomationId="SearchFilter"
                           Margin="8,0" SelectedValuePath="Tag" SelectedValue="{Binding SearchFilter}" Width="110"
@@ -352,13 +356,17 @@
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <TextBlock Text="Select rows with Ctrl/Shift; the Sel checkbox controls download selection."
                                        VerticalAlignment="Center" Foreground="#64748B" FontSize="12" />
                             <Button Grid.Column="1" AutomationProperties.AutomationId="RemoveSelectedQueueRowsButton"
                                     Content="Remove Selected" Command="{Binding RemoveSelectedQueueTracksCommand}"
                                     Background="#475569" Margin="8,0,0,0" />
-                            <Button Grid.Column="2" AutomationProperties.AutomationId="ClearDownloadQueueButton"
+                            <Button Grid.Column="2" AutomationProperties.AutomationId="ClearCompletedQueueRowsButton"
+                                    Content="Clear Completed" Command="{Binding ClearCompletedQueueTracksCommand}"
+                                    Background="#15803D" Margin="8,0,0,0" />
+                            <Button Grid.Column="3" AutomationProperties.AutomationId="ClearDownloadQueueButton"
                                     Content="Clear Queue" Command="{Binding ClearQueueCommand}"
                                     Background="#DC2626" Margin="8,0,0,0" />
                         </Grid>
@@ -393,12 +401,31 @@
                             <DataGridTemplateColumn Header="Progress" Width="140">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
-                                        <ProgressBar Value="{Binding Progress}" Maximum="100" Height="14" Background="#E2E8F0" Foreground="#2563EB" />
+                                        <ProgressBar Value="{Binding Progress}" Maximum="100" Height="14">
+                                            <ProgressBar.Style>
+                                                <Style TargetType="{x:Type ProgressBar}">
+                                                    <Setter Property="Foreground" Value="#2563EB" />
+                                                    <Setter Property="Background" Value="#E2E8F0" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding State}" Value="{x:Static models:DownloadState.Downloading}">
+                                                            <Setter Property="Foreground" Value="#EAB308" />
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding State}" Value="{x:Static models:DownloadState.Completed}">
+                                                            <Setter Property="Foreground" Value="#16A34A" />
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding State}" Value="{x:Static models:DownloadState.Failed}">
+                                                            <Setter Property="Foreground" Value="#F97316" />
+                                                            <Setter Property="Background" Value="#F97316" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </ProgressBar.Style>
+                                        </ProgressBar>
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
-                            <DataGridTextColumn Header="Speed" Binding="{Binding Speed}" Width="80" IsReadOnly="True" />
-                            <DataGridTextColumn Header="ETA" Binding="{Binding Eta}" Width="60" IsReadOnly="True" />
+                            <DataGridTextColumn Header="Speed" Binding="{Binding Speed}" Width="110" IsReadOnly="True" />
+                            <DataGridTextColumn Header="ETA" Binding="{Binding Eta}" Width="80" IsReadOnly="True" />
                         </DataGrid.Columns>
                     </DataGrid>
                 </DockPanel>

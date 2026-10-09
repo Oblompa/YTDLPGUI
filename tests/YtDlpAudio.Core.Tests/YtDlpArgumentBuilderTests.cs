@@ -16,6 +16,7 @@ public class YtDlpArgumentBuilderTests
             .WithAudioOnly("mp3", AudioQualityPreset.Cbr320k)
             .WithStreamSelection(preferPremium: false)
             .WithEmbeddings()
+            .WithNewlineProgress()
             .WithPrintAfterMoveFilepath();
 
         string args = builder.Build("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
@@ -30,6 +31,8 @@ public class YtDlpArgumentBuilderTests
         Assert.Contains("--embed-thumbnail", args);
         Assert.Contains("--convert-thumbnails jpg", args);
         Assert.Contains(@"--print ""after_move:filepath""", args);
+        Assert.Contains("--progress", args);
+        Assert.Contains("--newline", args);
     }
 
     [Fact]

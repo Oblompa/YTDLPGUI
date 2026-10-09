@@ -9,6 +9,7 @@ public partial class TrackItemViewModel : ObservableObject
     [ObservableProperty] private string _id = string.Empty;
     [ObservableProperty] private string _title = string.Empty;
     [ObservableProperty] private string _artist = string.Empty;
+    [ObservableProperty] private string _outputFolderName = string.Empty;
     [ObservableProperty] private TimeSpan? _duration;
     [ObservableProperty] private string? _thumbnailUrl;
     [ObservableProperty] private string _url = string.Empty;

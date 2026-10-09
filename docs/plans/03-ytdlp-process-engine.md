@@ -83,6 +83,8 @@ public interface ISearchService
 
 yt-dlp reports states and progress line-by-line via stdout. The engine uses compiled regular expressions:
 
+For download runs, explicitly enable progress and `--newline` so redirected output is line-oriented and speed/ETA updates reach the UI as they happen.
+
 ### 3.1 Progress Pattern
 ```csharp
 // Matches: [download]  45.2% of ~120.50MiB at 12.4MiB/s ETA 00:05
@@ -192,3 +194,12 @@ The user reports that every download fails while search and sign-in work. Treat 
 - Parse only entries with a usable video ID and title; skip unavailable, malformed, and empty entries.
 - If playlist inspection fails, preserve the playlist queue row and surface the error so the user can retry or remove it.
 - Playlist metadata enumeration must be lazy: search results contain playlist summaries only, and only an explicitly expanded/queued playlist is inspected.
+
+## 8. Download Timing and Performance Validation
+
+- Record dependency setup, per-item preparation, yt-dlp process, observed transfer, observed post-processing, output validation, and whole-queue durations.
+- Keep logs structured and free of URLs, track titles, output paths, cookies, and account data. Show an elapsed-time summary after a queue run.
+- Transfer time is measured from the first parsed download-progress event through the parsed 100% event. Post-processing is measured from its first parsed extraction/tag/thumbnail event to process completion; these are observable estimates, not internal yt-dlp phase timings.
+- For a flat output template, snapshot and search only the output directory's requested audio format. Retain recursive snapshot/search behavior for nested custom templates so fallback output validation remains correct.
+- Keep queue execution sequential and preserve audio quality, metadata, and cover-art defaults. Do not add batching, concurrency, cookie reuse, or weaken output validation unless an authorized-media benchmark shows a repeatable benefit and regression coverage confirms safety.
+- No real-media performance benchmark is implied by unit tests; compare cold and warm runs and report measured phase durations before making further tuning decisions.

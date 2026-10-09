@@ -52,6 +52,7 @@ public class YtDlpProcessRunner : IYtDlpRunner
 
         var outputBuilder = new StringBuilder();
         var errorBuilder = new StringBuilder();
+        var phaseTracker = new DownloadPhaseTracker();
         Task outputReadTask = Task.CompletedTask;
         Task errorReadTask = Task.CompletedTask;
         var stopwatch = Stopwatch.StartNew();
@@ -64,8 +65,8 @@ public class YtDlpProcessRunner : IYtDlpRunner
                 throw new InvalidOperationException("The yt-dlp process could not be started.");
             }
 
-            outputReadTask = CaptureOutputAsync(process.StandardOutput, outputBuilder, progress);
-            errorReadTask = CaptureOutputAsync(process.StandardError, errorBuilder, progress);
+            outputReadTask = CaptureOutputAsync(process.StandardOutput, outputBuilder, progress, phaseTracker);
+            errorReadTask = CaptureOutputAsync(process.StandardError, errorBuilder, progress, phaseTracker);
 
             using var cancellationRegistration = ct.Register(() =>
             {
@@ -83,8 +84,10 @@ public class YtDlpProcessRunner : IYtDlpRunner
                     Success: false,
                     ExitCode: -2,
                     Output: outputBuilder.ToString(),
-                    Error: "Process cancelled by user."
-                );
+                    Error: "Process cancelled by user.")
+                {
+                    Timing = phaseTracker.CreateTiming(stopwatch.Elapsed)
+                };
             }
 
             await Task.WhenAll(outputReadTask, errorReadTask);
@@ -93,6 +96,7 @@ public class YtDlpProcessRunner : IYtDlpRunner
             stopwatch.Stop();
             string output = outputBuilder.ToString();
             string error = errorBuilder.ToString();
+            DownloadTiming processTiming = phaseTracker.CreateTiming(stopwatch.Elapsed);
 
             if (!success)
             {
@@ -107,17 +111,25 @@ public class YtDlpProcessRunner : IYtDlpRunner
                     Success: false,
                     ExitCode: process.ExitCode,
                     Output: output,
-                    Error: diagnostic
-                );
+                    Error: diagnostic)
+                {
+                    Timing = processTiming
+                };
             }
 
-            _logger.LogInformation("yt-dlp completed successfully in {ElapsedMilliseconds} ms.", stopwatch.ElapsedMilliseconds);
+            _logger.LogInformation(
+                "yt-dlp process timing: total={TotalMilliseconds} ms, transfer={TransferMilliseconds} ms, post-processing={PostProcessingMilliseconds} ms.",
+                processTiming.Process.TotalMilliseconds,
+                processTiming.Transfer?.TotalMilliseconds,
+                processTiming.PostProcessing?.TotalMilliseconds);
             return new YtDlpResult(
                 Success: true,
                 ExitCode: process.ExitCode,
                 Output: output,
-                Error: null
-            );
+                Error: null)
+            {
+                Timing = processTiming
+            };
         }
         catch (OperationCanceledException)
         {
@@ -125,8 +137,10 @@ public class YtDlpProcessRunner : IYtDlpRunner
                 Success: false,
                 ExitCode: -2,
                 Output: outputBuilder.ToString(),
-                Error: "Process cancelled by user."
-            );
+                Error: "Process cancelled by user.")
+            {
+                Timing = phaseTracker.CreateTiming(stopwatch.Elapsed)
+            };
         }
         catch (Exception ex)
         {
@@ -135,22 +149,83 @@ public class YtDlpProcessRunner : IYtDlpRunner
                 Success: false,
                 ExitCode: -3,
                 Output: outputBuilder.ToString(),
-                Error: $"Failed to execute yt-dlp: {ex.Message}"
-            );
+                Error: $"Failed to execute yt-dlp: {ex.Message}")
+            {
+                Timing = phaseTracker.CreateTiming(stopwatch.Elapsed)
+            };
         }
     }
 
     private static async Task CaptureOutputAsync(
         StreamReader reader,
         StringBuilder destination,
-        IProgress<DownloadProgressUpdate>? progress)
+        IProgress<DownloadProgressUpdate>? progress,
+        DownloadPhaseTracker phaseTracker)
     {
         while (await reader.ReadLineAsync() is { } line)
         {
             destination.AppendLine(line);
             if (RegexPatterns.TryParseProgressLine(line, "active_task", out var update) && update is not null)
             {
+                phaseTracker.Observe(update);
                 progress?.Report(update);
+            }
+        }
+    }
+
+    private sealed class DownloadPhaseTracker
+    {
+        private readonly object _sync = new();
+        private long? _transferStartedAt;
+        private long? _transferCompletedAt;
+        private long? _postProcessingStartedAt;
+
+        public void Observe(DownloadProgressUpdate update)
+        {
+            long now = Stopwatch.GetTimestamp();
+            lock (_sync)
+            {
+                if (update.State == DownloadState.Downloading)
+                {
+                    _transferStartedAt ??= now;
+                }
+                else if (update.State == DownloadState.Completed)
+                {
+                    _transferStartedAt ??= now;
+                    _transferCompletedAt ??= now;
+                }
+                else if (update.State is DownloadState.ExtractingAudio or
+                         DownloadState.Tagging or
+                         DownloadState.EmbeddingThumbnail)
+                {
+                    if (_transferCompletedAt.HasValue)
+                    {
+                        _postProcessingStartedAt ??= now;
+                    }
+                }
+            }
+        }
+
+        public DownloadTiming CreateTiming(TimeSpan processDuration)
+        {
+            long now = Stopwatch.GetTimestamp();
+            lock (_sync)
+            {
+                TimeSpan? transferDuration = _transferStartedAt.HasValue &&
+                                             _transferCompletedAt.HasValue
+                    ? Stopwatch.GetElapsedTime(_transferStartedAt.Value, _transferCompletedAt.Value)
+                    : null;
+                TimeSpan? postProcessingDuration = _postProcessingStartedAt.HasValue
+                    ? Stopwatch.GetElapsedTime(_postProcessingStartedAt.Value, now)
+                    : null;
+
+                return new DownloadTiming(
+                    Preparation: TimeSpan.Zero,
+                    Process: processDuration,
+                    Transfer: transferDuration,
+                    PostProcessing: postProcessingDuration,
+                    Validation: TimeSpan.Zero,
+                    Total: processDuration);
             }
         }
     }

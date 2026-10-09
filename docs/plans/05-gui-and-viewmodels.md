@@ -129,6 +129,7 @@ UI and interaction requirements:
 - Fetch flat track metadata only for the playlist the user expands; do not enumerate every playlist during search.
 - Allow queueing an individual track from expanded details, while preserving the existing action to queue an entire playlist.
 - Use the same authenticated metadata flow for private YouTube and YouTube Music playlist URLs.
+- When downloading, group playlist tracks under the playlist's title; place individually queued songs under the artist's name.
 
 ## 7. Queue Bulk Management
 
@@ -138,6 +139,9 @@ Add extended row selection to the download queue and provide distinct `Remove Se
 - `Clear Queue` must confirm before removing a non-empty queue.
 - Do not silently remove or abandon a downloading row. Protect active work and explain the remaining rows, or require the user to cancel active work first.
 - Removing queue entries must not delete downloaded files or alter search results.
+- Pressing Enter in the search field invokes the same search/inspect command as the Search button.
+- `Clear Completed` removes only completed rows and preserves failed, queued, and in-progress rows.
+- Show live speed and ETA in the queue; color progress green for completed, orange for failed, and yellow while downloading.
 
 **Validation**: Ctrl/Shift-select multiple rows and remove them while confirming download checkboxes remain unchanged; cancel a clear confirmation and confirm the queue is preserved; confirm active downloads are not silently discarded.
 

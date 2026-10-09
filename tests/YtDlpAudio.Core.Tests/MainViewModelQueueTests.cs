@@ -51,14 +51,20 @@ public class MainViewModelQueueTests
 
     private sealed class TestSearchService : ISearchService
     {
+        public int SearchCallCount { get; private set; }
+        public string? LastQuery { get; private set; }
         public IReadOnlyList<SearchResultItem> SearchResults { get; set; } = Array.Empty<SearchResultItem>();
 
         public Task<IReadOnlyList<SearchResultItem>> SearchAsync(
             string query,
             SearchFilterType filter = SearchFilterType.Tracks,
             int maxResults = 20,
-            CancellationToken ct = default) =>
-            Task.FromResult(SearchResults);
+            CancellationToken ct = default)
+        {
+            SearchCallCount++;
+            LastQuery = query;
+            return Task.FromResult(SearchResults);
+        }
 
         public Task<IReadOnlyList<SearchResultItem>> BrowseAccountPlaylistsAsync(
             CancellationToken ct = default) =>
@@ -101,16 +107,15 @@ public class MainViewModelQueueTests
             throw new NotSupportedException();
     }
 
-    private static MainViewModel CreateViewModel(IYtDlpRunner runner)
+    private static MainViewModel CreateViewModel(IYtDlpRunner runner, TestSearchService? search = null)
     {
         var dependencies = new TestDependencyManager();
         var auth = new TestAuthManager();
-        var search = new TestSearchService();
         return new MainViewModel(
             dependencies,
             auth,
             runner,
-            search,
+            search ?? new TestSearchService(),
             new MetadataCleaner(),
             new AudioDownloadService(runner, dependencies),
             new TestSettingsService());
@@ -170,6 +175,68 @@ public class MainViewModelQueueTests
         confirm = true;
         await viewModel.ClearQueueAsync();
         Assert.Empty(viewModel.QueueTracks);
+    }
+
+    [Fact]
+    public void ClearCompletedQueueTracks_RemovesOnlyCompletedRows()
+    {
+        var viewModel = CreateViewModel(new MockYtDlpRunner());
+        var completed = CreateTrack("Completed", selectedForDownload: true);
+        completed.State = DownloadState.Completed;
+        var failed = CreateTrack("Failed", selectedForDownload: true);
+        failed.State = DownloadState.Failed;
+        var queued = CreateTrack("Queued", selectedForDownload: false);
+        viewModel.QueueTracks.Add(completed);
+        viewModel.QueueTracks.Add(failed);
+        viewModel.QueueTracks.Add(queued);
+        viewModel.SetSelectedQueueTracks([completed, failed]);
+
+        viewModel.ClearCompletedQueueTracks();
+
+        Assert.DoesNotContain(completed, viewModel.QueueTracks);
+        Assert.Contains(failed, viewModel.QueueTracks);
+        Assert.Contains(queued, viewModel.QueueTracks);
+        Assert.DoesNotContain(completed, viewModel.SelectedQueueTracks);
+        Assert.Contains("Cleared 1 completed", viewModel.StatusMessage);
+    }
+
+    [Fact]
+    public async Task SubmitInputAsync_SearchesNonUrlInput()
+    {
+        var searchService = new TestSearchService();
+        var viewModel = CreateViewModel(new MockYtDlpRunner(), searchService);
+        viewModel.InputText = "  Iron Maiden  ";
+
+        await viewModel.SubmitInputAsync();
+
+        Assert.Equal(1, searchService.SearchCallCount);
+        Assert.Equal("Iron Maiden", searchService.LastQuery);
+        Assert.Equal(0, viewModel.SelectedTabIndex);
+    }
+
+    [Fact]
+    public async Task DownloadSelectedAsync_AppendsTimingSummaryAfterProcessingQueue()
+    {
+        var viewModel = CreateViewModel(new MockYtDlpRunner());
+        string outputDirectory = Path.Combine(Path.GetTempPath(), $"ytdlp_timing_test_{Guid.NewGuid():N}");
+        viewModel.OutputDirectory = outputDirectory;
+        viewModel.QueueTracks.Add(CreateTrack("Timing test", selectedForDownload: true));
+
+        try
+        {
+            await viewModel.DownloadSelectedAsync();
+
+            Assert.Contains("Time:", viewModel.StatusMessage);
+            Assert.Contains("transfer", viewModel.StatusMessage);
+            Assert.Equal(DownloadState.Completed, Assert.Single(viewModel.QueueTracks).State);
+        }
+        finally
+        {
+            if (Directory.Exists(outputDirectory))
+            {
+                Directory.Delete(outputDirectory, recursive: true);
+            }
+        }
     }
 
     [Fact]
@@ -265,6 +332,31 @@ public class MainViewModelQueueTests
     }
 
     [Fact]
+    public async Task ExpandPlaylistAsync_AssignsPlaylistNameAsDownloadFolder()
+    {
+        var runner = new MockYtDlpRunner
+        {
+            QueryMetadataHandler = (_, _, _, _) => Task.FromResult(ParseJson("""
+                {
+                  "entries": [
+                    { "id": "track-id", "title": "Song", "uploader": "Artist" }
+                  ]
+                }
+                """))
+        };
+        var viewModel = CreateViewModel(runner);
+        var playlist = CreateTrack("My Playlist", selectedForDownload: true);
+        playlist.IsPlaylist = true;
+        viewModel.QueueTracks.Add(playlist);
+
+        await viewModel.ExpandPlaylistAsync(playlist);
+
+        var track = Assert.Single(viewModel.QueueTracks);
+        Assert.Equal("track-id", track.Id);
+        Assert.Equal("My Playlist", track.OutputFolderName);
+    }
+
+    [Fact]
     public async Task AddSearchResultToQueueAsync_SkipsUnavailablePlaylistEntries()
     {
         var runner = new MockYtDlpRunner
@@ -275,7 +367,8 @@ public class MainViewModelQueueTests
                     { "id": "available", "title": "Available Song", "uploader": "Artist" },
                     { "id": "missing", "title": "Video unavailable", "is_unavailable": true },
                     { "title": "Missing ID" }
-                  ]
+                  ],
+                  "title": "Selected Playlist"
                 }
                 """))
         };
@@ -289,6 +382,7 @@ public class MainViewModelQueueTests
         var queuedTrack = Assert.Single(viewModel.QueueTracks);
         Assert.Equal("available", queuedTrack.Id);
         Assert.Equal("Available Song", queuedTrack.Title);
+        Assert.Equal("Selected Playlist", queuedTrack.OutputFolderName);
     }
 
     [Fact]
@@ -308,5 +402,6 @@ public class MainViewModelQueueTests
         var track = Assert.Single(viewModel.QueueTracks);
         Assert.Equal("video-id", track.Id);
         Assert.Equal("Single Song", track.Title);
+        Assert.Equal("Artist", track.OutputFolderName);
     }
 }

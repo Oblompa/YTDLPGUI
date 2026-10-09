@@ -413,6 +413,10 @@ public class AudioDownloadIntegrationTests
             var downloadResult = await downloadService.DownloadAudioAsync(first.Url, config, progress);
 
             Assert.True(downloadResult.Success);
+            Assert.NotNull(downloadResult.Timing);
+            Assert.True(downloadResult.Timing.Total >= TimeSpan.Zero);
+            Assert.True(downloadResult.Timing.Preparation >= TimeSpan.Zero);
+            Assert.True(downloadResult.Timing.Validation >= TimeSpan.Zero);
             string outputPath = Assert.Single(
                 downloadResult.Output.Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries));
             Assert.True(File.Exists(outputPath));
@@ -425,6 +429,201 @@ public class AudioDownloadIntegrationTests
             if (Directory.Exists(testOutput))
             {
                 try { Directory.Delete(testOutput, recursive: true); } catch { /* ignore */ }
+            }
+        }
+    }
+
+    [Fact]
+    public async Task DownloadAudioAsync_SavesIntoSanitizedSubdirectory()
+    {
+        var runner = new MockYtDlpRunner();
+        var downloadService = new AudioDownloadService(
+            runner,
+            new FakeDependencyManager(),
+            authManager: null);
+        string testOutput = Path.Combine(Path.GetTempPath(), $"ytdlp_folder_test_{Guid.NewGuid():N}");
+
+        try
+        {
+            var config = new AudioPipelineConfig(OutputDirectory: testOutput);
+            var result = await downloadService.DownloadAudioAsync(
+                "https://www.youtube.com/watch?v=test",
+                config,
+                outputSubdirectory: "Queen/Live: 1985");
+
+            Assert.True(result.Success, result.Error);
+            string outputPath = Assert.Single(
+                result.Output.Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries));
+            Assert.Equal(
+                Path.Combine(testOutput, "Queen_Live_ 1985"),
+                Path.GetDirectoryName(outputPath));
+            Assert.True(File.Exists(outputPath));
+        }
+        finally
+        {
+            if (Directory.Exists(testOutput))
+            {
+                Directory.Delete(testOutput, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task DownloadAudioAsync_DoesNotAllowSubdirectoryTraversal()
+    {
+        var runner = new MockYtDlpRunner();
+        var downloadService = new AudioDownloadService(
+            runner,
+            new FakeDependencyManager(),
+            authManager: null);
+        string testOutput = Path.Combine(Path.GetTempPath(), $"ytdlp_folder_traversal_test_{Guid.NewGuid():N}");
+
+        try
+        {
+            var config = new AudioPipelineConfig(OutputDirectory: testOutput);
+            var result = await downloadService.DownloadAudioAsync(
+                "https://www.youtube.com/watch?v=test",
+                config,
+                outputSubdirectory: @"..\escape");
+
+            Assert.True(result.Success, result.Error);
+            string outputPath = Assert.Single(
+                result.Output.Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries));
+            Assert.Equal(Path.Combine(testOutput, ".._escape"), Path.GetDirectoryName(outputPath));
+            Assert.True(File.Exists(outputPath));
+        }
+        finally
+        {
+            if (Directory.Exists(testOutput))
+            {
+                Directory.Delete(testOutput, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task DownloadAudioAsync_FindsNewMp3WhenRunnerDoesNotPrintFinalPath()
+    {
+        string testOutput = Path.Combine(Path.GetTempPath(), $"ytdlp_missing_report_test_{Guid.NewGuid():N}");
+        string expectedDirectory = Path.Combine(testOutput, "High Energy Classic Rock");
+        string expectedOutputPath = Path.Combine(expectedDirectory, "New Song.mp3");
+        var runner = new MockYtDlpRunner
+        {
+            ExecuteHandler = async (_, _, ct) =>
+            {
+                Directory.CreateDirectory(expectedDirectory);
+                await File.WriteAllBytesAsync(expectedOutputPath, [0x49, 0x44, 0x33], ct);
+                return new YtDlpResult(
+                    Success: true,
+                    ExitCode: 0,
+                    Output: string.Empty,
+                    Error: null);
+            }
+        };
+        var downloadService = new AudioDownloadService(
+            runner,
+            new FakeDependencyManager(),
+            authManager: null);
+
+        try
+        {
+            var result = await downloadService.DownloadAudioAsync(
+                "https://www.youtube.com/watch?v=test",
+                new AudioPipelineConfig(OutputDirectory: testOutput),
+                outputSubdirectory: "High Energy Classic Rock");
+
+            Assert.True(result.Success, result.Error);
+            Assert.Equal(expectedOutputPath, result.Output);
+        }
+        finally
+        {
+            if (Directory.Exists(testOutput))
+            {
+                Directory.Delete(testOutput, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task DownloadAudioAsync_FindsNewMp3InNestedTemplateDirectory()
+    {
+        string testOutput = Path.Combine(Path.GetTempPath(), $"ytdlp_nested_output_test_{Guid.NewGuid():N}");
+        string expectedDirectory = Path.Combine(testOutput, "Album");
+        string expectedOutputPath = Path.Combine(expectedDirectory, "New Song.mp3");
+        var runner = new MockYtDlpRunner
+        {
+            ExecuteHandler = async (_, _, ct) =>
+            {
+                Directory.CreateDirectory(expectedDirectory);
+                await File.WriteAllBytesAsync(expectedOutputPath, [0x49, 0x44, 0x33], ct);
+                return new YtDlpResult(
+                    Success: true,
+                    ExitCode: 0,
+                    Output: string.Empty,
+                    Error: null);
+            }
+        };
+        var downloadService = new AudioDownloadService(
+            runner,
+            new FakeDependencyManager(),
+            authManager: null);
+
+        try
+        {
+            var result = await downloadService.DownloadAudioAsync(
+                "https://www.youtube.com/watch?v=test",
+                new AudioPipelineConfig(
+                    OutputDirectory: testOutput,
+                    FilenameTemplate: Path.Combine("%(album)s", "%(title)s.%(ext)s")));
+
+            Assert.True(result.Success, result.Error);
+            Assert.Equal(expectedOutputPath, result.Output);
+        }
+        finally
+        {
+            if (Directory.Exists(testOutput))
+            {
+                Directory.Delete(testOutput, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task DownloadAudioAsync_DoesNotMistakeExistingMp3ForCurrentDownload()
+    {
+        string testOutput = Path.Combine(Path.GetTempPath(), $"ytdlp_stale_output_test_{Guid.NewGuid():N}");
+        string expectedDirectory = Path.Combine(testOutput, "Artist");
+        string stalePath = Path.Combine(expectedDirectory, "Old Song.mp3");
+        Directory.CreateDirectory(expectedDirectory);
+        await File.WriteAllBytesAsync(stalePath, [0x49, 0x44, 0x33]);
+        var runner = new MockYtDlpRunner
+        {
+            ExecuteHandler = (_, _, _) => Task.FromResult(new YtDlpResult(
+                Success: true,
+                ExitCode: 0,
+                Output: string.Empty,
+                Error: null))
+        };
+        var downloadService = new AudioDownloadService(
+            runner,
+            new FakeDependencyManager(),
+            authManager: null);
+
+        try
+        {
+            var result = await downloadService.DownloadAudioAsync(
+                "https://www.youtube.com/watch?v=test",
+                new AudioPipelineConfig(OutputDirectory: testOutput),
+                outputSubdirectory: "Artist");
+
+            Assert.False(result.Success);
+            Assert.Contains("no new or updated non-empty MP3 file", result.Error);
+        }
+        finally
+        {
+            if (Directory.Exists(testOutput))
+            {
+                Directory.Delete(testOutput, recursive: true);
             }
         }
     }
@@ -493,7 +692,7 @@ public class AudioDownloadIntegrationTests
 
             Assert.False(result.Success);
             Assert.Equal(0, result.ExitCode);
-            Assert.Contains("did not report an output file", result.Error);
+            Assert.Contains("no new or updated non-empty MP3 file", result.Error);
         }
         finally
         {
